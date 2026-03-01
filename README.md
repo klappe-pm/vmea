@@ -17,12 +17,12 @@ A lightweight, zero-telemetry macOS CLI tool that exports Apple Voice Memos to O
 
 ```bash
 # Clone and install
-git clone https://github.com/YOUR_USERNAME/vmea.git
+git clone https://github.com/klappe-pm/vmea.git
 cd vmea
 pip install -e .
 
 # Or with pipx
-pipx install git+https://github.com/YOUR_USERNAME/vmea.git
+pipx install git+https://github.com/klappe-pm/vmea.git
 ```
 
 ### Requirements

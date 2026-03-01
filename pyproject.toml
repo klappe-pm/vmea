@@ -51,9 +51,9 @@ dev = [
 vmea = "vmea.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/vmea"
-Repository = "https://github.com/YOUR_USERNAME/vmea"
-Issues = "https://github.com/YOUR_USERNAME/vmea/issues"
+Homepage = "https://github.com/klappe-pm/vmea"
+Repository = "https://github.com/klappe-pm/vmea"
+Issues = "https://github.com/klappe-pm/vmea/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vmea"]
