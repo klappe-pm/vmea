@@ -1,0 +1,156 @@
+# VMEA Configuration
+# Copy to ~/.config/vmea/config.toml and customize
+
+# =============================================================================
+# Output Settings
+# =============================================================================
+
+# Where to write exported notes and audio files
+# Supports ~ expansion
+output_folder = "~/Documents/Obsidian/Voice Memos"
+
+# Subdirectory structure within output_folder
+# Options: "flat", "by-year", "by-month"
+# - flat: all files in root
+# - by-year: YYYY/filename
+# - by-month: YYYY/MM/filename
+output_structure = "flat"
+
+# =============================================================================
+# Metadata & Frontmatter
+# =============================================================================
+
+# Default domain tag for all voice memos
+default_domain = "voice-memo"
+
+# Additional tags to add to all memos (beyond auto-generated ones)
+additional_tags = []
+
+# Date format for filenames
+# Uses Python strftime format
+filename_date_format = "%Y-%m-%d"
+
+# Slug separator for filenames
+slug_separator = "-"
+
+# Maximum filename length (excluding extension)
+max_filename_length = 100
+
+# =============================================================================
+# Source Detection
+# =============================================================================
+
+# Override automatic source path detection
+# Leave empty to auto-detect (recommended)
+# Typical paths:
+#   ~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/
+#   ~/Library/Application Support/com.apple.voicememos/Recordings/
+source_path_override = ""
+
+# =============================================================================
+# Transcript Processing
+# =============================================================================
+
+# Include native Apple transcript in notes (when available)
+include_native_transcript = true
+
+# Transcript extraction priority
+# Options: "plist", "tsrp", "both"
+# - plist: manifest.plist only (older format)
+# - tsrp: embedded m4a atom only (iOS 18+)
+# - both: try tsrp first, fall back to plist
+transcript_source_priority = "both"
+
+# =============================================================================
+# LLM Cleanup (Optional)
+# =============================================================================
+
+# Enable local LLM transcript cleanup via Ollama
+llm_cleanup_enabled = false
+
+# Ollama model to use for cleanup
+# Recommended: llama3.2:3b (fast), llama3.2:8b (better quality)
+ollama_model = "llama3.2:3b"
+
+# Ollama server host
+ollama_host = "http://localhost:11434"
+
+# Timeout for Ollama requests (seconds)
+ollama_timeout = 120
+
+# Path to custom cleanup instructions
+# If empty, uses built-in default prompt
+cleanup_instructions_path = ""
+
+# Keep original transcript when cleanup is applied
+keep_original_transcript = true
+
+# =============================================================================
+# Reconciliation & State
+# =============================================================================
+
+# How to handle existing notes with same memo_id
+# Options: "skip", "update", "overwrite"
+# - skip: never modify existing notes
+# - update: update only if source changed (recommended)
+# - overwrite: always regenerate
+conflict_resolution = "update"
+
+# State file location (stores export history)
+# Relative to output_folder or absolute path
+state_file = ".vmea-state.jsonl"
+
+# =============================================================================
+# Background Processing
+# =============================================================================
+
+# Enable filesystem watching
+watch_enabled = true
+
+# Debounce delay for file changes (seconds)
+# Prevents processing partially-synced files
+watch_debounce_seconds = 5
+
+# File stability check iterations
+# File must be unchanged for N checks before processing
+stability_check_count = 3
+
+# Stability check interval (seconds)
+stability_check_interval = 2
+
+# Periodic full reconciliation interval (minutes)
+# Set to 0 to disable
+reconcile_interval_minutes = 60
+
+# =============================================================================
+# Logging & Diagnostics
+# =============================================================================
+
+# Log level: DEBUG, INFO, WARNING, ERROR
+log_level = "INFO"
+
+# Log file location (empty = console only)
+# Supports ~ expansion
+log_file = "~/.local/share/vmea/vmea.log"
+
+# Maximum log file size (MB) before rotation
+log_max_size_mb = 10
+
+# Number of rotated log files to keep
+log_backup_count = 3
+
+# =============================================================================
+# Advanced
+# =============================================================================
+
+# Dry run mode (no files written)
+dry_run = false
+
+# Parallel processing workers (0 = auto based on CPU)
+workers = 0
+
+# Skip memos older than this date (ISO format, empty = no limit)
+skip_before_date = ""
+
+# Skip memos with duration less than this (seconds, 0 = no limit)
+min_duration_seconds = 0
