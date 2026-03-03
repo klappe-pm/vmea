@@ -49,7 +49,6 @@ def quote_toml_string(value: str) -> str:
 def render_config_content(config: VMEAConfig) -> str:
     """Render a minimal TOML config without external dependencies."""
     output_folder = quote_toml_string(str(config.output_folder))
-    audio_output_folder = quote_toml_string(str(config.audio_output_folder)) if config.audio_output_folder else ""
     source_override = quote_toml_string(str(config.source_path_override)) if config.source_path_override else ""
     cleanup_path = (
         quote_toml_string(str(config.cleanup_instructions_path))
@@ -67,9 +66,7 @@ def render_config_content(config: VMEAConfig) -> str:
 
 # Output
 output_folder = "{output_folder}"
-audio_output_folder = "{audio_output_folder}"
 audio_export_mode = "{config.audio_export_mode.value if hasattr(config.audio_export_mode, 'value') else config.audio_export_mode}"
-audio_fallback_to_source_link = {str(config.audio_fallback_to_source_link).lower()}
 default_domain = "{quote_toml_string(config.default_domain)}"
 
 # Source
@@ -127,14 +124,13 @@ def prompt_path_with_default(prompt_text: str, default_path: Path) -> Path:
 
 
 def prompt_output_folder(default_path: Path | None = None) -> Path:
-    """Always prompt for output folder. Audio/ subfolder is created automatically."""
+    """Always prompt for output folder."""
     if default_path:
         default_str = str(default_path.expanduser())
     else:
         default_str = str(Path.home() / "Documents" / "Voice Memos")
 
     console.print("[bold]Select output folder for markdown files[/bold]")
-    console.print("[dim](Audio/ subfolder will be created automatically)[/dim]")
 
     folder_str = typer.prompt("Output folder", default=default_str).strip()
     return Path(folder_str).expanduser()
@@ -369,10 +365,6 @@ def init() -> None:
 
     output_folder = choose_folder("Select the folder where Markdown notes should be saved")
 
-    audio_output_folder: Path | None = None
-    if typer.confirm("Store exported audio in a separate folder?", default=True):
-        audio_output_folder = choose_folder("Select the folder where audio files should be saved")
-
     # Detect source path
     source_path = find_source_path()
     if source_path:
@@ -428,9 +420,7 @@ def init() -> None:
     # Create config
     config = VMEAConfig(
         output_folder=output_folder,
-        audio_output_folder=audio_output_folder,
-        audio_export_mode="copy",
-        audio_fallback_to_source_link=False,
+        audio_export_mode="app-link",
         source_path_override=source_override,
         llm_cleanup_enabled=llm_cleanup_enabled,
         ollama_model=ollama_model,
@@ -444,10 +434,7 @@ def init() -> None:
 
     console.print(f"\n[green]✓[/green] Config saved to: {config_path}")
     console.print(f"[green]✓[/green] Output folder: {output_folder}")
-    console.print(
-        f"[green]✓[/green] Audio destination: "
-        f"{audio_output_folder or output_folder} (copy)"
-    )
+    console.print("[green]✓[/green] Audio: Links to Voice Memos app (no file copy)")
     if source_override:
         console.print(f"[green]✓[/green] Source folder: {source_override}")
     if llm_cleanup_enabled:
@@ -1082,9 +1069,11 @@ def config() -> None:
     cfg = load_config()
     console.print("[bold]Output:[/bold]")
     console.print(f"  folder: {cfg.output_folder}")
-    console.print(f"  audio_folder: {cfg.audio_output_folder or cfg.output_folder}")
-    console.print(f"  audio_export_mode: {cfg.audio_export_mode}")
-    console.print(f"  audio_fallback_to_source_link: {cfg.audio_fallback_to_source_link}")
+    if cfg.audio_export_mode == "app-link":
+        console.print("  audio: Links to Voice Memos app (no file copy)")
+    else:
+        console.print(f"  audio_mode: {cfg.audio_export_mode}")
+    console.print(f"  structure: {cfg.output_structure}")
     console.print("\n[bold]Source:[/bold]")
     if cfg.source_path_override:
         console.print(f"  path: {cfg.source_path_override} (override)")
