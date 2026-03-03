@@ -1,12 +1,10 @@
 """Tests for VMEA Ollama lifecycle management module."""
 
 import json
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from vmea.ollama import (
-    OllamaStatus,
     ensure_ready,
     is_ollama_installed,
     is_ollama_running,
@@ -33,17 +31,17 @@ class FakeResponse:
 
 
 def test_is_ollama_installed_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("vmea.ollama.shutil.which", lambda x: "/usr/local/bin/ollama")
+    monkeypatch.setattr("vmea.ollama.shutil.which", lambda _x: "/usr/local/bin/ollama")
     assert is_ollama_installed() is True
 
 
 def test_is_ollama_installed_false(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("vmea.ollama.shutil.which", lambda x: None)
+    monkeypatch.setattr("vmea.ollama.shutil.which", lambda _x: None)
     assert is_ollama_installed() is False
 
 
 def test_is_ollama_running_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(req, timeout):
+    def fake_urlopen(_req, _timeout):  # type: ignore[no-untyped-def]
         return FakeResponse({"models": []})
 
     monkeypatch.setattr("vmea.ollama.request.urlopen", fake_urlopen)
@@ -51,7 +49,7 @@ def test_is_ollama_running_true(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_is_ollama_running_false_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(req, timeout):
+    def fake_urlopen(_req, _timeout):  # type: ignore[no-untyped-def]
         raise ConnectionRefusedError("Connection refused")
 
     monkeypatch.setattr("vmea.ollama.request.urlopen", fake_urlopen)
@@ -59,7 +57,7 @@ def test_is_ollama_running_false_on_error(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_list_models_returns_model_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(req, timeout):
+    def fake_urlopen(_req, _timeout):  # type: ignore[no-untyped-def]
         return FakeResponse({
             "models": [
                 {"name": "llama3.2:3b", "size": 2000000000},
@@ -68,7 +66,7 @@ def test_list_models_returns_model_names(monkeypatch: pytest.MonkeyPatch) -> Non
         })
 
     monkeypatch.setattr("vmea.ollama.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: True)
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: True)
 
     models, err = list_models()
     assert err is None
@@ -76,7 +74,7 @@ def test_list_models_returns_model_names(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_list_models_returns_error_when_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: False)
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: False)
 
     models, err = list_models()
     assert models == []
@@ -84,14 +82,14 @@ def test_list_models_returns_error_when_not_running(monkeypatch: pytest.MonkeyPa
 
 
 def test_preload_model_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(req, timeout):
+    def fake_urlopen(req, _timeout):  # type: ignore[no-untyped-def]
         payload = json.loads(req.data.decode("utf-8"))
         assert payload["model"] == "llama3.2:3b"
         assert payload["prompt"] == "Hello"
         return FakeResponse({"response": "Hi there!"})
 
     monkeypatch.setattr("vmea.ollama.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: True)
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: True)
 
     success, err = preload_model("llama3.2:3b")
     assert success is True
@@ -99,7 +97,7 @@ def test_preload_model_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_preload_model_fails_when_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: False)
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: False)
 
     success, err = preload_model("llama3.2:3b")
     assert success is False
@@ -108,7 +106,7 @@ def test_preload_model_fails_when_not_running(monkeypatch: pytest.MonkeyPatch) -
 
 def test_start_ollama_already_running(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("vmea.ollama.is_ollama_installed", lambda: True)
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: True)
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: True)
 
     success, err = start_ollama()
     assert success is True
@@ -125,9 +123,9 @@ def test_start_ollama_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_ensure_ready_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("vmea.ollama.is_ollama_installed", lambda: True)
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: True)
-    monkeypatch.setattr("vmea.ollama.list_models", lambda h: (["llama3.2:3b"], None))
-    monkeypatch.setattr("vmea.ollama.preload_model", lambda m, h: (True, None))
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: True)
+    monkeypatch.setattr("vmea.ollama.list_models", lambda _h: (["llama3.2:3b"], None))
+    monkeypatch.setattr("vmea.ollama.preload_model", lambda _m, _h: (True, None))
 
     status = ensure_ready("llama3.2:3b")
     assert status.running is True
@@ -137,8 +135,8 @@ def test_ensure_ready_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_ensure_ready_model_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("vmea.ollama.is_ollama_installed", lambda: True)
-    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda h: True)
-    monkeypatch.setattr("vmea.ollama.list_models", lambda h: (["mistral:7b"], None))
+    monkeypatch.setattr("vmea.ollama.is_ollama_running", lambda _h: True)
+    monkeypatch.setattr("vmea.ollama.list_models", lambda _h: (["mistral:7b"], None))
 
     status = ensure_ready("llama3.2:3b")
     assert status.running is True

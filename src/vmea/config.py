@@ -1,16 +1,10 @@
 """VMEA Configuration – Pydantic models and config loading."""
 
-import sys
+import tomllib
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 class OutputStructure(str, Enum):
@@ -60,7 +54,7 @@ class VMEAConfig(BaseModel):
 
     # Output settings
     output_folder: Path = Field(default=Path("~/Documents/Obsidian/Voice Memos"))
-    audio_output_folder: Optional[Path] = None
+    audio_output_folder: Path | None = None
     output_structure: OutputStructure = OutputStructure.FLAT
     audio_export_mode: AudioExportMode = AudioExportMode.APP_LINK  # Default to app-link (no file copy)
     audio_fallback_to_source_link: bool = False
@@ -75,7 +69,7 @@ class VMEAConfig(BaseModel):
     max_filename_length: int = 100
 
     # Source detection
-    source_path_override: Optional[Path] = None
+    source_path_override: Path | None = None
 
     # Transcript processing
     include_native_transcript: bool = True
@@ -87,14 +81,14 @@ class VMEAConfig(BaseModel):
     ollama_models: list[str] = Field(default_factory=list)  # Cascade: [transcribe, revise, polish]
     ollama_host: str = "http://localhost:11434"
     ollama_timeout: int = 120
-    cleanup_instructions_path: Optional[Path] = None
+    cleanup_instructions_path: Path | None = None
     fail_on_missing_instruction_file: bool = False
     preserve_raw_transcript: bool = True
     ollama_startup_mode: str = "terminal_managed"  # "terminal_managed" or "background"
 
     # Whisper transcription (for memos without native transcripts)
     whisper_model: str = "base"  # tiny, base, small, medium, large
-    whisper_language: Optional[str] = None  # Auto-detect if None
+    whisper_language: str | None = None  # Auto-detect if None
     transcribe_missing: bool = True  # Transcribe memos without transcripts
 
     # Reconciliation & state
@@ -110,14 +104,14 @@ class VMEAConfig(BaseModel):
 
     # Logging
     log_level: LogLevel = LogLevel.INFO
-    log_file: Optional[Path] = Path("~/.local/share/vmea/vmea.log")
+    log_file: Path | None = Path("~/.local/share/vmea/vmea.log")
     log_max_size_mb: int = 10
     log_backup_count: int = 3
 
     # Advanced
     dry_run: bool = False
     workers: int = 0
-    skip_before_date: Optional[str] = None
+    skip_before_date: str | None = None
     min_duration_seconds: int = 0
 
     @field_validator(
@@ -129,7 +123,7 @@ class VMEAConfig(BaseModel):
         mode="before",
     )
     @classmethod
-    def expand_path(cls, v: Optional[str | Path]) -> Optional[Path]:
+    def expand_path(cls, v: str | Path | None) -> Path | None:
         """Expand ~ in paths."""
         if v is None or v == "":
             return None
@@ -148,7 +142,7 @@ def migrate_legacy_config(path: Path) -> None:
     if not path.exists():
         return
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         content = f.read()
 
     original = content
@@ -177,7 +171,7 @@ def migrate_legacy_config(path: Path) -> None:
             f.write(content)
 
 
-def load_config(config_path: Optional[Path] = None) -> VMEAConfig:
+def load_config(config_path: Path | None = None) -> VMEAConfig:
     """Load configuration from TOML file.
 
     Args:
@@ -198,7 +192,7 @@ def load_config(config_path: Optional[Path] = None) -> VMEAConfig:
     return VMEAConfig()
 
 
-def save_config(config: VMEAConfig, config_path: Optional[Path] = None) -> None:
+def save_config(config: VMEAConfig, config_path: Path | None = None) -> None:
     """Save configuration to TOML file.
 
     Args:

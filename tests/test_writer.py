@@ -3,8 +3,6 @@
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 from vmea.parser import MemoMetadata
 from vmea.writer import (
     format_duration,

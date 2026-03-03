@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -14,8 +14,6 @@ from rich.table import Table
 
 from vmea import __version__
 from vmea.cleanup import (
-    CascadeCleanupResult,
-    CleanupResult,
     cascade_cleanup_transcript,
     cleanup_transcript,
     generate_domains,
@@ -25,8 +23,6 @@ from vmea.cleanup import (
 from vmea.config import VMEAConfig, get_config_path, load_config
 from vmea.discovery import diagnose_paths, discover_memos, find_source_path
 from vmea.ollama import (
-    OllamaStatus,
-    ensure_ready,
     is_ollama_running,
     list_models,
     preload_model,
@@ -118,7 +114,7 @@ def choose_folder(prompt_text: str) -> Path:
         return Path(result.stdout.strip()).expanduser()
     except subprocess.TimeoutExpired:
         console.print("[red]Folder selection timed out.[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except FileNotFoundError:
         folder_str = typer.prompt(prompt_text)
         return Path(folder_str).expanduser()
@@ -130,7 +126,7 @@ def prompt_path_with_default(prompt_text: str, default_path: Path) -> Path:
     return Path(value).expanduser()
 
 
-def prompt_output_folder(default_path: Optional[Path] = None) -> Path:
+def prompt_output_folder(default_path: Path | None = None) -> Path:
     """Always prompt for output folder. Audio/ subfolder is created automatically."""
     if default_path:
         default_str = str(default_path.expanduser())
@@ -158,7 +154,7 @@ def parse_ollama_model_list(output: str) -> list[str]:
     return models
 
 
-def list_ollama_models_cli(host: str) -> tuple[list[str], Optional[str]]:
+def list_ollama_models_cli(host: str) -> tuple[list[str], str | None]:
     """List locally available Ollama models via CLI (fallback)."""
     if shutil.which("ollama") is None:
         return [], "Ollama CLI is not installed."
@@ -184,7 +180,7 @@ def list_ollama_models_cli(host: str) -> tuple[list[str], Optional[str]]:
     return parse_ollama_model_list(result.stdout), None
 
 
-def prompt_ollama_model(saved_model: str, host: str, allow_skip: bool = False) -> Optional[str]:
+def prompt_ollama_model(saved_model: str, host: str, allow_skip: bool = False) -> str | None:
     """Show a numbered list of local Ollama models and let the user pick one.
 
     Args:
@@ -195,17 +191,13 @@ def prompt_ollama_model(saved_model: str, host: str, allow_skip: bool = False) -
     Returns:
         Selected model name, or None if the user chose to skip.
     """
-    return prompt_ollama_models(
+    result = prompt_ollama_models(
         saved_models=[saved_model] if saved_model else [],
         host=host,
         allow_skip=allow_skip,
         max_models=1,
-    )[0] if (result := prompt_ollama_models(
-        saved_models=[saved_model] if saved_model else [],
-        host=host,
-        allow_skip=allow_skip,
-        max_models=1,
-    )) else None
+    )
+    return result[0] if result else None
 
 
 def prompt_ollama_models(
@@ -253,8 +245,10 @@ def prompt_ollama_models(
         console.print(f"  {i}. {model}{marker}")
 
     if max_models > 1:
-        console.print(f"\n[dim]Select up to {max_models} models for cascade processing.")
-        console.print("Enter numbers separated by commas (e.g., '1,2,3') or 'done' to finish.[/dim]")
+        console.print(
+            f"\n[dim]Select up to {max_models} models for cascade processing.\n"
+            "Enter numbers separated by commas (e.g., '1,2,3') or 'done' to finish.[/dim]"
+        )
 
     # For single model selection, use simple prompt
     if max_models == 1:
@@ -350,7 +344,7 @@ def get_config_or_exit() -> VMEAConfig:
 @app.callback()
 def main(
     version: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option("--version", "-v", callback=version_callback, is_eager=True),
     ] = None,
 ) -> None:
@@ -364,7 +358,7 @@ def init() -> None:
     console.print("[bold blue]🎙️ VMEA Setup[/bold blue]\n")
 
     config_path = get_config_path()
-    existing_config: Optional[VMEAConfig] = None
+    existing_config: VMEAConfig | None = None
     if config_path.exists():
         try:
             existing_config = load_config(config_path)
@@ -375,7 +369,7 @@ def init() -> None:
 
     output_folder = choose_folder("Select the folder where Markdown notes should be saved")
 
-    audio_output_folder: Optional[Path] = None
+    audio_output_folder: Path | None = None
     if typer.confirm("Store exported audio in a separate folder?", default=True):
         audio_output_folder = choose_folder("Select the folder where audio files should be saved")
 
@@ -389,7 +383,7 @@ def init() -> None:
     else:
         console.print("[yellow]⚠[/yellow] Voice Memos folder not found (will check again on export)")
 
-    source_override: Optional[Path] = source_path
+    source_override: Path | None = source_path
     if source_override is None:
         source_input = typer.prompt(
             "Enter the folder containing your Voice Memo .m4a files (leave blank to auto-detect later)",
@@ -470,7 +464,7 @@ def init() -> None:
 @app.command()
 def export(
     memo_id: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--memo-id", "-m", help="Export single memo by ID"),
     ] = None,
     dry_run: Annotated[
@@ -644,7 +638,7 @@ def export(
                     )
 
             # LLM processing: cleanup transcript, generate key takeaways, domains, and filename title
-            key_takeaways: Optional[list[str]] = None
+            key_takeaways: list[str] | None = None
             llm_model = ""
             domains = ""
             sub_domains = ""
@@ -752,9 +746,10 @@ def export(
 @app.command()
 def watch() -> None:
     """Watch for new voice memos and export automatically."""
+    import time
+
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
-    import time
 
     config = get_config_or_exit()
     source_path = find_source_path(config.source_path_override)
@@ -763,27 +758,27 @@ def watch() -> None:
         console.print("[red]✗[/red] Voice Memos folder not found.")
         raise typer.Exit(1)
 
-    console.print(f"[bold blue]VMEA Watch[/bold blue]")
+    console.print("[bold blue]VMEA Watch[/bold blue]")
     console.print(f"Watching: {source_path}")
     console.print("Press Ctrl+C to stop\n")
 
     class MemoHandler(FileSystemEventHandler):
-        def __init__(self):
+        def __init__(self) -> None:
             self.pending: dict[str, float] = {}
             self.debounce_seconds = config.watch_debounce_seconds
 
-        def on_created(self, event):
+        def on_created(self, event: Any) -> None:
             if event.is_directory or not event.src_path.endswith('.m4a'):
                 return
             self.pending[event.src_path] = time.time()
             console.print(f"  [dim]detected[/dim] {Path(event.src_path).name}")
 
-        def on_modified(self, event):
+        def on_modified(self, event: Any) -> None:
             if event.is_directory or not event.src_path.endswith('.m4a'):
                 return
             self.pending[event.src_path] = time.time()
 
-        def process_pending(self):
+        def process_pending(self) -> None:
             now = time.time()
             ready = [p for p, t in self.pending.items() if now - t > self.debounce_seconds]
             for path in ready:
@@ -839,7 +834,7 @@ def doctor() -> None:
             issues += 1
             config = None
     else:
-        console.print(f"[red]✗[/red] Config not found. Run [bold]vmea init[/bold]")
+        console.print("[red]✗[/red] Config not found. Run [bold]vmea init[/bold]")
         issues += 1
         config = None
 
@@ -937,7 +932,7 @@ def list_memos() -> None:
         raise typer.Exit(0)
 
     # Load state to show export status
-    state: Optional[StateStore] = None
+    state: StateStore | None = None
     if config:
         state_path = config.output_folder.expanduser() / config.state_file
         if state_path.exists():
@@ -966,10 +961,7 @@ def list_memos() -> None:
         date_str = metadata.created.strftime("%Y-%m-%d") if metadata.created else "unknown"
 
         # Check if exported
-        if state and memo_pair.memo_id in state:
-            status = "[green]✓[/green]"
-        else:
-            status = "[dim]–[/dim]"
+        status = "[green]✓[/green]" if state and memo_pair.memo_id in state else "[dim]–[/dim]"
 
         table.add_row(memo_pair.memo_id[:12] + "...", title, duration, date_str, status)
 
@@ -985,26 +977,26 @@ def config() -> None:
         console.print("[red]No config found.[/red] Run [bold]vmea init[/bold] first.")
         raise typer.Exit(1)
 
-    console.print(f"[bold blue]VMEA Configuration[/bold blue]")
+    console.print("[bold blue]VMEA Configuration[/bold blue]")
     console.print(f"[dim]Path: {config_path}[/dim]\n")
 
     cfg = load_config()
-    console.print(f"[bold]Output:[/bold]")
+    console.print("[bold]Output:[/bold]")
     console.print(f"  folder: {cfg.output_folder}")
     console.print(f"  audio_folder: {cfg.audio_output_folder or cfg.output_folder}")
     console.print(f"  audio_export_mode: {cfg.audio_export_mode}")
     console.print(f"  audio_fallback_to_source_link: {cfg.audio_fallback_to_source_link}")
     console.print(f"  structure: {cfg.output_structure}")
-    console.print(f"\n[bold]Source:[/bold]")
+    console.print("\n[bold]Source:[/bold]")
     if cfg.source_path_override:
         console.print(f"  path: {cfg.source_path_override} (override)")
     else:
         source = find_source_path()
         console.print(f"  path: {source or 'not found'} (auto-detected)")
-    console.print(f"\n[bold]Reconciliation:[/bold]")
+    console.print("\n[bold]Reconciliation:[/bold]")
     console.print(f"  conflict_resolution: {cfg.conflict_resolution}")
     console.print(f"  state_file: {cfg.state_file}")
-    console.print(f"\n[bold]LLM Cleanup:[/bold]")
+    console.print("\n[bold]LLM Cleanup:[/bold]")
     console.print(f"  enabled: {cfg.llm_cleanup_enabled}")
     if cfg.llm_cleanup_enabled:
         console.print(f"  model: {cfg.ollama_model}")
@@ -1030,7 +1022,7 @@ def ollama_status() -> None:
         if err:
             console.print(f"[yellow]⚠[/yellow] Could not list models: {err}")
         elif models:
-            console.print(f"\n[bold]Available models:[/bold]")
+            console.print("\n[bold]Available models:[/bold]")
             for model in models:
                 marker = " [dim](configured)[/dim]" if config and model == config.ollama_model else ""
                 console.print(f"  - {model}{marker}")
@@ -1063,7 +1055,7 @@ def ollama_start(
     success, err = start_ollama(host, terminal_mode=terminal)
 
     if success:
-        console.print(f"[green]✓[/green] Ollama started")
+        console.print("[green]✓[/green] Ollama started")
     else:
         console.print(f"[red]✗[/red] Failed to start: {err}")
         raise typer.Exit(1)

@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, cast
 
 from mutagen.mp4 import MP4
 
@@ -15,14 +15,14 @@ class MemoMetadata:
     """Parsed metadata from a Voice Memo."""
 
     memo_id: str
-    title: Optional[str] = None
-    created: Optional[datetime] = None
-    modified: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
-    transcript: Optional[str] = None
-    revised_transcript: Optional[str] = None
-    transcript_source: Optional[str] = None  # "plist", "tsrp", or "native"
-    custom_label: Optional[str] = None
+    title: str | None = None
+    created: datetime | None = None
+    modified: datetime | None = None
+    duration_seconds: float | None = None
+    transcript: str | None = None
+    revised_transcript: str | None = None
+    transcript_source: str | None = None  # "plist", "tsrp", or "native"
+    custom_label: str | None = None
     is_favorited: bool = False
     raw_plist: dict[str, Any] = field(default_factory=dict)
     # Cleanup provenance fields
@@ -31,7 +31,7 @@ class MemoMetadata:
     transcript_instruction_source: str = ""  # file path or ""
 
 
-def parse_manifest_plist(composition_path: Path) -> Optional[dict[str, Any]]:
+def parse_manifest_plist(composition_path: Path) -> dict[str, Any] | None:
     """Parse manifest.plist from a .composition folder.
 
     Args:
@@ -46,12 +46,12 @@ def parse_manifest_plist(composition_path: Path) -> Optional[dict[str, Any]]:
 
     try:
         with open(manifest_path, "rb") as f:
-            return plistlib.load(f)
+            return cast(dict[str, Any], plistlib.load(f))
     except (plistlib.InvalidFileException, OSError):
         return None
 
 
-def extract_transcript_from_plist(plist_data: dict[str, Any]) -> Optional[str]:
+def extract_transcript_from_plist(plist_data: dict[str, Any]) -> str | None:
     """Extract transcript text from parsed plist data.
 
     Args:
@@ -60,11 +60,11 @@ def extract_transcript_from_plist(plist_data: dict[str, Any]) -> Optional[str]:
     Returns:
         Transcript string, or None if not present.
     """
-    def normalize(text: str) -> Optional[str]:
+    def normalize(text: str) -> str | None:
         cleaned = text.strip()
         return cleaned or None
 
-    def from_runs(value: Any) -> Optional[str]:
+    def from_runs(value: Any) -> str | None:
         if isinstance(value, dict):
             value = value.get("runs")
         if not isinstance(value, list):
@@ -75,7 +75,7 @@ def extract_transcript_from_plist(plist_data: dict[str, Any]) -> Optional[str]:
             return None
         return normalize("".join(parts))
 
-    def from_segments(value: Any) -> Optional[str]:
+    def from_segments(value: Any) -> str | None:
         if not isinstance(value, list):
             return None
 
@@ -97,7 +97,7 @@ def extract_transcript_from_plist(plist_data: dict[str, Any]) -> Optional[str]:
             return None
         return normalize(" ".join(parts))
 
-    def extract(value: Any) -> Optional[str]:
+    def extract(value: Any) -> str | None:
         if isinstance(value, str):
             return normalize(value)
 
@@ -147,7 +147,7 @@ def extract_transcript_from_plist(plist_data: dict[str, Any]) -> Optional[str]:
     return extract(plist_data)
 
 
-def extract_tsrp_atom(audio_path: Path) -> Optional[str]:
+def extract_tsrp_atom(audio_path: Path) -> str | None:
     """Extract transcript from tsrp atom embedded in .m4a file.
 
     iOS 18+ / macOS 15+ embeds transcripts as JSON in a custom atom.
@@ -219,7 +219,7 @@ _FILENAME_DATE_PATTERN = re.compile(
 )
 
 
-def parse_date_from_filename(memo_id: str) -> Optional[datetime]:
+def parse_date_from_filename(memo_id: str) -> datetime | None:
     """Parse recording date from Voice Memo filename.
 
     Voice Memos use format: "YYYYMMDD HHMMSS-UUID"
@@ -242,7 +242,7 @@ def parse_date_from_filename(memo_id: str) -> Optional[datetime]:
         return None
 
 
-def extract_duration_from_m4a(audio_path: Path) -> Optional[float]:
+def extract_duration_from_m4a(audio_path: Path) -> float | None:
     """Extract duration from M4A file using mutagen.
 
     Args:
@@ -252,7 +252,7 @@ def extract_duration_from_m4a(audio_path: Path) -> Optional[float]:
         Duration in seconds, or None if extraction fails.
     """
     try:
-        audio = MP4(audio_path)
+        audio = MP4(audio_path)  # type: ignore[no-untyped-call]
         if audio.info and audio.info.length:
             return audio.info.length
     except Exception:
@@ -277,7 +277,7 @@ def generate_title_from_date(dt: datetime) -> str:
 
 def parse_memo(
     audio_path: Path,
-    composition_path: Optional[Path],
+    composition_path: Path | None,
     memo_id: str,
     transcript_priority: str = "both",
 ) -> MemoMetadata:
@@ -295,7 +295,7 @@ def parse_memo(
     metadata = MemoMetadata(memo_id=memo_id)
 
     # Parse plist if available
-    plist_data: Optional[dict[str, Any]] = None
+    plist_data: dict[str, Any] | None = None
     if composition_path:
         plist_data = parse_manifest_plist(composition_path)
         if plist_data:
@@ -313,8 +313,8 @@ def parse_memo(
             metadata.duration_seconds = plist_data.get("duration")
 
     # Extract transcript based on priority
-    transcript: Optional[str] = None
-    source: Optional[str] = None
+    transcript: str | None = None
+    source: str | None = None
 
     if transcript_priority in ("tsrp", "both"):
         transcript = extract_tsrp_atom(audio_path)

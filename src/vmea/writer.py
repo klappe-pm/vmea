@@ -4,7 +4,6 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 from urllib.parse import quote
 
 from vmea.parser import MemoMetadata
@@ -73,7 +72,7 @@ def generate_filename(
     return f"{date_str}-{seq_str}-{title}.md"
 
 
-def format_duration(seconds: Optional[float]) -> str:
+def format_duration(seconds: float | None) -> str:
     """Format duration in human-readable form."""
     if seconds is None:
         return "Unknown"
@@ -96,8 +95,8 @@ def generate_note_content(
     llm_model: str = "",
     domains: str = "",
     sub_domains: str = "",
-    key_takeaways: Optional[list[str]] = None,
-    audio_source_path: Optional[Path] = None,
+    key_takeaways: list[str] | None = None,
+    audio_source_path: Path | None = None,
     audio_export_mode: str = "copy",
 ) -> str:
     """Generate Markdown note content with YAML frontmatter.
@@ -193,7 +192,7 @@ def write_note(
     metadata: MemoMetadata,
     output_folder: Path,
     audio_source: Path,
-    key_takeaways: Optional[list[str]] = None,
+    key_takeaways: list[str] | None = None,
     llm_model: str = "",
     domains: str = "",
     sub_domains: str = "",
@@ -201,7 +200,7 @@ def write_note(
     dry_run: bool = False,
     audio_export_mode: str = "app-link",
     llm_title: str = "",
-) -> tuple[Path, Optional[Path]]:
+) -> tuple[Path, Path | None]:
     """Write a Markdown note and optionally copy the audio file.
 
     Args:
@@ -255,7 +254,7 @@ def write_note(
             note_path = output_folder / note_filename
 
     # Audio handling depends on export mode
-    audio_path: Optional[Path] = None
+    audio_path: Path | None = None
     audio_filename = note_filename.replace(".md", ".m4a")
 
     if audio_export_mode != "app-link":

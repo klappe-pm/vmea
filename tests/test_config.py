@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from vmea.config import (
     ConflictResolution,
@@ -54,7 +55,7 @@ transcript_source_priority = "invalid_value"
 '''
         )
 
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with pytest.raises(ValidationError):
             load_config(config_path)
 
 

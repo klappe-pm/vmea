@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from urllib import error, request
 
 from vmea.ollama import is_ollama_running
-
 
 # Path to bundled default instructions file
 _DEFAULT_INSTRUCTIONS_PATH = Path(__file__).parent / "prompts" / "cleanup_instructions.md"
@@ -39,8 +37,8 @@ class CleanupResult:
 
 
 def resolve_instruction_file(
-    explicit_path: Optional[Path],
-    search_dir: Optional[Path] = None,
+    explicit_path: Path | None,
+    search_dir: Path | None = None,
     fail_on_missing: bool = False,
 ) -> tuple[str, str]:
     """Resolve instruction file using priority order.
@@ -137,8 +135,8 @@ def cleanup_transcript(
     model: str,
     host: str = "http://localhost:11434",
     timeout: int = 120,
-    instructions_path: Optional[Path] = None,
-    search_dir: Optional[Path] = None,
+    instructions_path: Path | None = None,
+    search_dir: Path | None = None,
     fail_on_missing_instruction: bool = False,
 ) -> CleanupResult:
     """Send a transcript to Ollama for cleanup and return revised text with provenance."""
@@ -174,8 +172,8 @@ def cascade_cleanup_transcript(
     models: list[str],
     host: str = "http://localhost:11434",
     timeout: int = 120,
-    instructions_path: Optional[Path] = None,
-    search_dir: Optional[Path] = None,
+    instructions_path: Path | None = None,
+    search_dir: Path | None = None,
     fail_on_missing_instruction: bool = False,
 ) -> CascadeCleanupResult:
     """Run transcript through multiple models sequentially for cascading improvement.

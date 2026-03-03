@@ -1,8 +1,8 @@
 """VMEA Discovery – Find and enumerate Voice Memos on the system."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional
 
 # Known Voice Memos locations on macOS (checked in order of preference)
 # Reference: Apple documentation and empirical testing across macOS versions
@@ -25,7 +25,7 @@ class MemoPair:
     """A paired Voice Memo: .m4a audio file + .composition metadata folder."""
 
     audio_path: Path
-    composition_path: Optional[Path]  # May not exist for older memos
+    composition_path: Path | None  # May not exist for older memos
     memo_id: str  # Derived from filename stem
 
     @property
@@ -34,7 +34,7 @@ class MemoPair:
         return self.composition_path is not None and self.composition_path.exists()
 
 
-def find_source_path(override: Optional[Path] = None) -> Optional[Path]:
+def find_source_path(override: Path | None = None) -> Path | None:
     """Find the Voice Memos source directory.
 
     Args:

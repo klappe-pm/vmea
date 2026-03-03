@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Optional
 from urllib import error, request
 
 
@@ -19,7 +18,7 @@ class OllamaStatus:
     running: bool
     host: str
     models: list[str]
-    error: Optional[str] = None
+    error: str | None = None
 
 
 def is_ollama_installed() -> bool:
@@ -49,7 +48,7 @@ def start_ollama(
     host: str = "http://localhost:11434",
     wait_seconds: int = 10,
     terminal_mode: bool = False,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Start the Ollama server if not already running.
 
     Args:
@@ -103,7 +102,7 @@ def start_ollama(
         return False, f"Unexpected error starting Ollama: {exc}"
 
 
-def list_models(host: str = "http://localhost:11434") -> tuple[list[str], Optional[str]]:
+def list_models(host: str = "http://localhost:11434") -> tuple[list[str], str | None]:
     """List locally available Ollama models.
 
     Args:
@@ -134,7 +133,7 @@ def preload_model(
     model: str,
     host: str = "http://localhost:11434",
     timeout: int = 120,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Preload a model into memory for faster inference.
 
     This sends a minimal prompt to warm up the model.
@@ -179,7 +178,7 @@ def preload_model(
 def pull_model(
     model: str,
     host: str = "http://localhost:11434",
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Pull a model from the Ollama registry.
 
     Args:

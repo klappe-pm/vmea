@@ -1,6 +1,6 @@
 """Tests for VMEA CLI helpers."""
 
-from vmea.cli import list_ollama_models_cli, parse_ollama_model_list
+from vmea.cli import parse_ollama_model_list
 
 
 def test_parse_ollama_model_list_reads_model_names() -> None:

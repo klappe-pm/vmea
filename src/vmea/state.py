@@ -2,10 +2,10 @@
 
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Optional
 
 
 @dataclass
@@ -15,12 +15,12 @@ class MemoState:
     memo_id: str
     source_hash: str  # Hash of source audio + plist
     note_path: str
-    audio_path: Optional[str] = None  # None for app-link mode
+    audio_path: str | None = None  # None for app-link mode
     exported_at: str = ""  # ISO format
-    source_modified: Optional[str] = None  # ISO format
-    transcript_source: Optional[str] = None
+    source_modified: str | None = None  # ISO format
+    transcript_source: str | None = None
     export_version: int = 1
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -39,7 +39,7 @@ class StateStore:
         if not self.path.exists():
             return
 
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -64,7 +64,7 @@ class StateStore:
             for record in self._records.values():
                 f.write(json.dumps(asdict(record)) + "\n")
 
-    def get(self, memo_id: str) -> Optional[MemoState]:
+    def get(self, memo_id: str) -> MemoState | None:
         """Get state for a memo by ID."""
         return self._records.get(memo_id)
 
@@ -99,7 +99,7 @@ class StateStore:
         return memo_id in self._records
 
 
-def compute_source_hash(audio_path: Path, composition_path: Optional[Path]) -> str:
+def compute_source_hash(audio_path: Path, composition_path: Path | None) -> str:
     """Compute a hash of the source files for change detection.
 
     Includes file content, size, and modification time to catch all changes,
@@ -138,7 +138,7 @@ def should_export(
     source_hash: str,
     state: StateStore,
     conflict_resolution: str = "update",
-    source_modified: Optional[datetime] = None,
+    source_modified: datetime | None = None,
 ) -> tuple[bool, str]:
     """Determine if a memo should be exported.
 
@@ -193,9 +193,9 @@ def record_export(
     memo_id: str,
     source_hash: str,
     note_path: Path,
-    audio_path: Optional[Path],
-    source_modified: Optional[datetime],
-    transcript_source: Optional[str],
+    audio_path: Path | None,
+    source_modified: datetime | None,
+    transcript_source: str | None,
 ) -> MemoState:
     """Record a successful export in the state store.
 

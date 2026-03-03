@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from vmea.cleanup import (
-    CleanupResult,
     _DEFAULT_INSTRUCTIONS_PATH,
+    CleanupResult,
     cleanup_transcript,
     resolve_instruction_file,
 )
@@ -66,7 +66,7 @@ def test_cleanup_transcript_returns_cleanup_result(
         return FakeResponse({"response": "revised transcript"})
 
     monkeypatch.setattr("vmea.cleanup.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda h: True)
+    monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda _h: True)
 
     # Use tmp_path to avoid picking up project's README.md
     result = cleanup_transcript("raw transcript", "llama3.2:3b", search_dir=tmp_path)
@@ -80,9 +80,9 @@ def test_cleanup_transcript_returns_cleanup_result(
 def test_cleanup_transcript_raises_on_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "vmea.cleanup.request.urlopen",
-        lambda req, timeout: FakeResponse({"response": "   "}),
+        lambda _req, _timeout: FakeResponse({"response": "   "}),
     )
-    monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda h: True)
+    monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda _h: True)
 
     with pytest.raises(RuntimeError, match="empty transcript"):
         cleanup_transcript("raw transcript", "llama3.2:3b")
@@ -91,7 +91,7 @@ def test_cleanup_transcript_raises_on_empty_response(monkeypatch: pytest.MonkeyP
 def test_cleanup_transcript_raises_when_ollama_not_running(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda h: False)
+    monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda _h: False)
 
     with pytest.raises(RuntimeError, match="not running"):
         cleanup_transcript("raw transcript", "llama3.2:3b")

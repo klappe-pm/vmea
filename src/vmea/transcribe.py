@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +32,8 @@ class TranscriptionResult:
 
     text: str
     model: str
-    language: Optional[str] = None
-    duration_seconds: Optional[float] = None
+    language: str | None = None
+    duration_seconds: float | None = None
 
 
 def is_whisper_available() -> bool:
@@ -44,7 +43,7 @@ def is_whisper_available() -> bool:
         True if whisper is importable.
     """
     try:
-        import whisper  # noqa: F401
+        import whisper  # type: ignore[import-untyped]  # noqa: F401
 
         return True
     except ImportError:
@@ -63,7 +62,7 @@ def get_available_models() -> list[str]:
 def transcribe_audio(
     audio_path: Path,
     model: str = DEFAULT_MODEL,
-    language: Optional[str] = None,
+    language: str | None = None,
     verbose: bool = False,
 ) -> TranscriptionResult:
     """Transcribe an audio file using Whisper.
@@ -91,7 +90,7 @@ def transcribe_audio(
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-    import whisper
+    import whisper  # type: ignore[import-untyped]
 
     try:
         # Load the model (downloads if not cached)
@@ -100,7 +99,7 @@ def transcribe_audio(
 
         # Transcribe the audio
         logger.info(f"Transcribing: {audio_path.name}")
-        options = {"verbose": verbose}
+        options: dict[str, str | bool] = {"verbose": verbose}
         if language:
             options["language"] = language
 
@@ -129,10 +128,10 @@ def transcribe_audio(
 
 def transcribe_if_needed(
     audio_path: Path,
-    existing_transcript: Optional[str],
+    existing_transcript: str | None,
     model: str = DEFAULT_MODEL,
-    language: Optional[str] = None,
-) -> tuple[Optional[str], str]:
+    language: str | None = None,
+) -> tuple[str | None, str]:
     """Transcribe audio only if no existing transcript is available.
 
     Args:
