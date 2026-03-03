@@ -8,7 +8,7 @@ A lightweight, zero-telemetry macOS CLI tool that exports Apple Voice Memos to O
 - **Rich Metadata Extraction** – Parses `.composition/manifest.plist` and embedded `tsrp` atoms for transcripts, duration, recording date
 - **Obsidian/Logseq Ready** – Generates Markdown with YAML frontmatter including tags, aliases, dates, transcript
 - **Reconciliation-as-Source-of-Truth** – Idempotent exports with create/update/skip logic based on content hashes
-- **Audio Preservation** – Copies `.m4a` files alongside notes with date-created metadata preserved
+- **Local Audio Export** – Copies every `.m4a` into your configured local export folder
 - **Optional LLM Cleanup** – Local Ollama integration for transcript post-processing (no internet required)
 - **Background Daemon** – `launchd` integration with filesystem watching + periodic reconciliation
 - **Zero Telemetry** – Fully offline, no tracking, MIT licensed
@@ -74,15 +74,19 @@ aliases:
 
 # Meeting Notes
 
-## Transcript
+## Revised Transcript
 
-[Native transcript content here...]
+[Cleaned transcript content here...]
 
 ## Metadata
 
 - **Recorded**: March 15, 2024 at 10:30 AM
 - **Duration**: 5:22
 - **Audio**: [[2024-03-15-meeting-notes.m4a]]
+
+## Original Transcript
+
+[Original raw transcript here...]
 ```
 
 ## Configuration
@@ -90,8 +94,14 @@ aliases:
 VMEA uses a TOML config file at `~/.config/vmea/config.toml`:
 
 ```toml
-# Output folder for notes and audio
+# Output folder for notes
 output_folder = "~/Documents/Obsidian/Voice Memos"
+
+# Optional separate output folder for exported audio
+audio_output_folder = "~/Documents/Obsidian/Voice Memos/Audio"
+
+# Audio is always copied locally during export
+audio_export_mode = "copy"
 
 # Default domain tag
 default_domain = "voice-memo"

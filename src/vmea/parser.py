@@ -20,6 +20,7 @@ class MemoMetadata:
     modified: Optional[datetime] = None
     duration_seconds: Optional[float] = None
     transcript: Optional[str] = None
+    revised_transcript: Optional[str] = None
     transcript_source: Optional[str] = None  # "plist", "tsrp", or "llm"
     custom_label: Optional[str] = None
     is_favorited: bool = False

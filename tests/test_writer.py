@@ -129,13 +129,30 @@ class TestGenerateNoteContent:
             duration_seconds=120.5,
         )
 
-        result = generate_note_content(metadata, "test.m4a")
+        result = generate_note_content(metadata, "test.m4a", "[[test.m4a]]")
 
         assert result.startswith("---\n")
         assert "\n# Test Recording\n" in result
         assert "\n## Metadata\n" in result
         assert "[[test.m4a]]" in result
-        assert "## Transcript" not in result
+        assert "## Revised Transcript" not in result
+
+    def test_note_content_places_revised_transcript_first_and_original_last(self) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            title="Test Recording",
+            transcript="raw transcript",
+            revised_transcript="revised transcript",
+        )
+
+        result = generate_note_content(metadata, "test.m4a", "[[test.m4a]]")
+
+        assert "## Revised Transcript" in result
+        assert "revised transcript" in result
+        assert "## Original Transcript" in result
+        assert "raw transcript" in result
+        assert result.index("## Revised Transcript") < result.index("## Metadata")
+        assert result.index("## Original Transcript") > result.index("## Metadata")
 
 
 class TestWriteNote:
@@ -161,7 +178,8 @@ class TestWriteNote:
 
         content = note_path.read_text(encoding="utf-8")
         assert "# Test Recording" in content
-        assert "## Transcript" in content
+        assert "## Revised Transcript" in content
+        assert "## Original Transcript" in content
         assert "[[2024-03-15-test-recording.m4a]]" in content
 
     def test_write_note_cleans_up_when_audio_copy_fails(
@@ -193,3 +211,63 @@ class TestWriteNote:
         assert not audio_path.exists()
         assert not note_path.with_suffix(".md.tmp").exists()
         assert not audio_path.with_suffix(".m4a.tmp").exists()
+
+    def test_write_note_can_export_audio_to_separate_folder(
+        self,
+        output_dir: Path,
+        temp_dir: Path,
+    ) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            title="Test Recording",
+            created=datetime(2024, 3, 15, 10, 30),
+        )
+        audio_source = temp_dir / "source.m4a"
+        audio_source.write_bytes(b"fake audio")
+        audio_output_dir = temp_dir / "audio"
+
+        note_path, audio_path = write_note(
+            metadata,
+            output_dir,
+            audio_source,
+            audio_output_folder=audio_output_dir,
+        )
+
+        assert note_path.exists()
+        assert audio_path == audio_output_dir / "2024-03-15-test-recording.m4a"
+        assert audio_path.exists()
+
+        content = note_path.read_text(encoding="utf-8")
+        assert "[Open Audio](<../audio/2024-03-15-test-recording.m4a>)" in content
+
+    def test_write_note_falls_back_to_local_source_link_when_copy_fails(
+        self,
+        output_dir: Path,
+        temp_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            title="Test Recording",
+            created=datetime(2024, 3, 15, 10, 30),
+        )
+        audio_source = temp_dir / "source.m4a"
+        audio_source.write_bytes(b"fake audio")
+
+        def fail_copy(_src: Path, _dst: Path) -> None:
+            raise OSError("copy failed")
+
+        monkeypatch.setattr("vmea.writer.shutil.copy2", fail_copy)
+
+        note_path, audio_path = write_note(
+            metadata,
+            output_dir,
+            audio_source,
+            audio_fallback_to_source_link=True,
+        )
+
+        assert note_path.exists()
+        assert audio_path == audio_source.resolve()
+
+        content = note_path.read_text(encoding="utf-8")
+        assert f"[Open Audio](<{audio_source.resolve().as_uri()}>)" in content

@@ -1,5 +1,6 @@
 """VMEA Writer – Generate Markdown notes with YAML frontmatter."""
 
+import os
 import re
 import shutil
 from datetime import datetime
@@ -92,7 +93,7 @@ def format_duration(seconds: Optional[float]) -> str:
 
 def generate_frontmatter(
     metadata: MemoMetadata,
-    audio_filename: str,
+    audio_reference: str,
     domain: str = "voice-memo",
     additional_tags: Optional[list[str]] = None,
 ) -> str:
@@ -100,7 +101,7 @@ def generate_frontmatter(
 
     Args:
         metadata: Parsed memo metadata.
-        audio_filename: Filename of the copied audio file.
+        audio_reference: Audio file reference or local file URL.
         domain: Domain tag.
         additional_tags: Extra tags to include.
 
@@ -137,7 +138,8 @@ def generate_frontmatter(
     if metadata.transcript_source:
         lines.append(f"transcript_source: {metadata.transcript_source}")
 
-    lines.append(f'audio_file: "{audio_filename}"')
+    safe_audio_reference = audio_reference.replace('"', '\\"')
+    lines.append(f'audio_file: "{safe_audio_reference}"')
 
     # Tags as YAML list
     lines.append("tags:")
@@ -155,7 +157,8 @@ def generate_frontmatter(
 
 def generate_note_content(
     metadata: MemoMetadata,
-    audio_filename: str,
+    audio_reference: str,
+    audio_link: str,
     domain: str = "voice-memo",
     additional_tags: Optional[list[str]] = None,
 ) -> str:
@@ -163,7 +166,8 @@ def generate_note_content(
 
     Args:
         metadata: Parsed memo metadata.
-        audio_filename: Filename of the copied audio file.
+        audio_reference: Audio file reference or local file URL.
+        audio_link: Rendered Markdown link for the audio.
         domain: Domain tag.
         additional_tags: Extra tags to include.
 
@@ -173,7 +177,7 @@ def generate_note_content(
     parts = []
 
     # Frontmatter
-    parts.append(generate_frontmatter(metadata, audio_filename, domain, additional_tags))
+    parts.append(generate_frontmatter(metadata, audio_reference, domain, additional_tags))
     parts.append("")  # Blank line after frontmatter
 
     # Title
@@ -181,11 +185,11 @@ def generate_note_content(
     parts.append(f"# {title}")
     parts.append("")
 
-    # Transcript section
+    # Revised transcript first.
     if metadata.transcript:
-        parts.append("## Transcript")
+        parts.append("## Revised Transcript")
         parts.append("")
-        parts.append(metadata.transcript)
+        parts.append(metadata.revised_transcript or metadata.transcript)
         parts.append("")
 
     # Metadata section
@@ -199,16 +203,78 @@ def generate_note_content(
     if metadata.duration_seconds is not None:
         parts.append(f"- **Duration**: {format_duration(metadata.duration_seconds)}")
 
-    parts.append(f"- **Audio**: [[{audio_filename}]]")
+    parts.append(f"- **Audio**: {audio_link}")
     parts.append("")
 
+    # Always keep the original transcript at the bottom when we have one.
+    if metadata.transcript:
+        parts.append("## Original Transcript")
+        parts.append("")
+        parts.append(metadata.transcript)
+        parts.append("")
+
     return "\n".join(parts)
+
+
+def render_audio_link(audio_reference: str) -> str:
+    """Render the best Markdown link format for an audio reference."""
+    if audio_reference.startswith("file://") or "/" in audio_reference:
+        return f"[Open Audio](<{audio_reference}>)"
+    return f"[[{audio_reference}]]"
+
+
+def build_audio_reference(note_path: Path, audio_path: Path) -> str:
+    """Build a relative reference from the note location to the audio file."""
+    if note_path.parent == audio_path.parent:
+        return audio_path.name
+    relative = os.path.relpath(audio_path, start=note_path.parent)
+    return relative.replace(os.sep, "/")
+
+
+def build_source_file_reference(audio_source: Path) -> str:
+    """Build a local file URL for an original source audio file."""
+    return audio_source.resolve().as_uri()
+
+
+def stage_audio_file(
+    audio_source: Path,
+    audio_path: Path,
+    export_mode: str,
+) -> None:
+    """Export an audio file using the configured mode."""
+    audio_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if export_mode == "copy":
+        temp_audio = audio_path.with_suffix(".m4a.tmp")
+        try:
+            shutil.copy2(audio_source, temp_audio)
+            temp_audio.replace(audio_path)
+        except Exception:
+            temp_audio.unlink(missing_ok=True)
+            raise
+        return
+
+    if export_mode == "symlink":
+        temp_audio = audio_path.with_suffix(".m4a.tmp")
+        try:
+            temp_audio.unlink(missing_ok=True)
+            temp_audio.symlink_to(audio_source.resolve())
+            temp_audio.replace(audio_path)
+        except Exception:
+            temp_audio.unlink(missing_ok=True)
+            raise
+        return
+
+    raise ValueError(f"Unsupported audio export mode: {export_mode}")
 
 
 def write_note(
     metadata: MemoMetadata,
     output_folder: Path,
     audio_source: Path,
+    audio_output_folder: Optional[Path] = None,
+    audio_export_mode: str = "copy",
+    audio_fallback_to_source_link: bool = True,
     domain: str = "voice-memo",
     additional_tags: Optional[list[str]] = None,
     date_format: str = "%Y-%m-%d",
@@ -220,8 +286,11 @@ def write_note(
 
     Args:
         metadata: Parsed memo metadata.
-        output_folder: Destination folder.
+        output_folder: Destination folder for Markdown notes.
         audio_source: Source .m4a file.
+        audio_output_folder: Destination folder for audio exports. Defaults to output_folder.
+        audio_export_mode: "copy", "symlink", or "source-link".
+        audio_fallback_to_source_link: If True, link the original file when audio export fails.
         domain: Domain tag.
         additional_tags: Extra tags.
         date_format: Date format for filenames.
@@ -231,6 +300,7 @@ def write_note(
         Tuple of (note_path, audio_path) for the written files.
     """
     output_folder.mkdir(parents=True, exist_ok=True)
+    audio_output_folder = (audio_output_folder or output_folder).expanduser()
 
     # Generate filenames with collision detection
     note_filename = generate_filename(metadata, date_format=date_format)
@@ -246,24 +316,46 @@ def write_note(
             note_path = output_folder / note_filename
 
     audio_filename = note_filename.replace(".md", ".m4a")
-    audio_path = output_folder / audio_filename
+    exported_audio_path = audio_output_folder / audio_filename
+
+    if audio_export_mode == "source-link":
+        audio_path = audio_source.resolve()
+        audio_reference = build_source_file_reference(audio_source)
+    else:
+        audio_path = exported_audio_path
+        audio_reference = build_audio_reference(note_path, audio_path)
 
     if dry_run:
         return note_path, audio_path
 
-    # Stage both files first so we never publish a note that links to missing audio.
-    content = generate_note_content(metadata, audio_filename, domain, additional_tags)
     temp_note = note_path.with_suffix(".md.tmp")
-    temp_audio = audio_path.with_suffix(".m4a.tmp")
+    wrote_audio = False
 
     try:
+        if audio_export_mode != "source-link":
+            try:
+                stage_audio_file(audio_source, exported_audio_path, audio_export_mode)
+                wrote_audio = True
+            except Exception:
+                if not audio_fallback_to_source_link:
+                    raise
+                audio_path = audio_source.resolve()
+                audio_reference = build_source_file_reference(audio_source)
+
+        content = generate_note_content(
+            metadata,
+            audio_reference,
+            render_audio_link(audio_reference),
+            domain,
+            additional_tags,
+        )
         temp_note.write_text(content, encoding="utf-8")
-        shutil.copy2(audio_source, temp_audio)
-        temp_audio.replace(audio_path)
         temp_note.replace(note_path)
     except Exception:
         temp_note.unlink(missing_ok=True)
-        temp_audio.unlink(missing_ok=True)
+        if wrote_audio and audio_export_mode != "source-link" and exported_audio_path.exists():
+            if exported_audio_path.is_symlink() or exported_audio_path.is_file():
+                exported_audio_path.unlink(missing_ok=True)
         raise
 
     return note_path, audio_path

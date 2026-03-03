@@ -5,9 +5,19 @@
 # Output Settings
 # =============================================================================
 
-# Where to write exported notes and audio files
+# Where to write exported Markdown notes
 # Supports ~ expansion
 output_folder = "~/Documents/Obsidian/Voice Memos"
+
+# Optional separate folder for exported audio files
+# Leave empty to store audio alongside notes
+audio_output_folder = ""
+
+# Audio is always copied into the configured local export folder
+audio_export_mode = "copy"
+
+# Do not fall back to source links; fail instead so local audio stays required
+audio_fallback_to_source_link = false
 
 # Subdirectory structure within output_folder
 # Options: "flat", "by-year", "by-month"
@@ -82,7 +92,7 @@ ollama_timeout = 120
 # If empty, uses built-in default prompt
 cleanup_instructions_path = ""
 
-# Keep original transcript when cleanup is applied
+# Keep the original transcript at the bottom of the note when cleanup is applied
 keep_original_transcript = true
 
 # =============================================================================

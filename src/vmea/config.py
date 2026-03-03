@@ -37,6 +37,14 @@ class ConflictResolution(str, Enum):
     OVERWRITE = "overwrite"
 
 
+class AudioExportMode(str, Enum):
+    """How to reference audio in exported notes."""
+
+    COPY = "copy"
+    SYMLINK = "symlink"
+    SOURCE_LINK = "source-link"
+
+
 class LogLevel(str, Enum):
     """Logging levels."""
 
@@ -51,7 +59,10 @@ class VMEAConfig(BaseModel):
 
     # Output settings
     output_folder: Path = Field(default=Path("~/Documents/Obsidian/Voice Memos"))
+    audio_output_folder: Optional[Path] = None
     output_structure: OutputStructure = OutputStructure.FLAT
+    audio_export_mode: AudioExportMode = AudioExportMode.COPY
+    audio_fallback_to_source_link: bool = False
 
     # Metadata & frontmatter
     default_domain: str = "voice-memo"
@@ -98,7 +109,14 @@ class VMEAConfig(BaseModel):
     skip_before_date: Optional[str] = None
     min_duration_seconds: int = 0
 
-    @field_validator("output_folder", "log_file", "source_path_override", "cleanup_instructions_path", mode="before")
+    @field_validator(
+        "output_folder",
+        "audio_output_folder",
+        "log_file",
+        "source_path_override",
+        "cleanup_instructions_path",
+        mode="before",
+    )
     @classmethod
     def expand_path(cls, v: Optional[str | Path]) -> Optional[Path]:
         """Expand ~ in paths."""

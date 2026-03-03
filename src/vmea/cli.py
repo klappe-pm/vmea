@@ -1,5 +1,7 @@
 """VMEA CLI – Command-line interface for Voice Memo Export Automation."""
 
+import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -11,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from vmea import __version__
+from vmea.cleanup import cleanup_transcript
 from vmea.config import VMEAConfig, get_config_path, load_config
 from vmea.discovery import diagnose_paths, discover_memos, find_source_path
 from vmea.parser import parse_memo
@@ -23,6 +26,166 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+def quote_toml_string(value: str) -> str:
+    """Quote a string for a simple TOML assignment."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def render_config_content(config: VMEAConfig) -> str:
+    """Render a minimal TOML config without external dependencies."""
+    output_folder = quote_toml_string(str(config.output_folder))
+    audio_output_folder = quote_toml_string(str(config.audio_output_folder)) if config.audio_output_folder else ""
+    source_override = quote_toml_string(str(config.source_path_override)) if config.source_path_override else ""
+    cleanup_path = (
+        quote_toml_string(str(config.cleanup_instructions_path))
+        if config.cleanup_instructions_path
+        else ""
+    )
+    ollama_host = quote_toml_string(config.ollama_host)
+    ollama_model = quote_toml_string(config.ollama_model)
+
+    return f'''# VMEA Configuration
+# Generated on {datetime.now().isoformat()}
+
+# Output
+output_folder = "{output_folder}"
+audio_output_folder = "{audio_output_folder}"
+audio_export_mode = "{config.audio_export_mode}"
+audio_fallback_to_source_link = {str(config.audio_fallback_to_source_link).lower()}
+default_domain = "{quote_toml_string(config.default_domain)}"
+
+# Source
+source_path_override = "{source_override}"
+
+# Transcript settings
+include_native_transcript = {str(config.include_native_transcript).lower()}
+transcript_source_priority = "{config.transcript_source_priority}"
+
+# LLM cleanup
+llm_cleanup_enabled = {str(config.llm_cleanup_enabled).lower()}
+ollama_model = "{ollama_model}"
+ollama_host = "{ollama_host}"
+ollama_timeout = {config.ollama_timeout}
+cleanup_instructions_path = "{cleanup_path}"
+keep_original_transcript = {str(config.keep_original_transcript).lower()}
+
+# Reconciliation
+conflict_resolution = "{config.conflict_resolution}"
+state_file = "{quote_toml_string(config.state_file)}"
+'''
+
+
+def choose_folder(prompt_text: str) -> Path:
+    """Prompt for a folder using AppleScript when available, else CLI input."""
+    console.print(prompt_text)
+    try:
+        result = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'set folderPath to POSIX path of (choose folder with prompt "{prompt_text}")',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            console.print("[red]Folder selection cancelled.[/red]")
+            raise typer.Exit(1)
+        return Path(result.stdout.strip()).expanduser()
+    except subprocess.TimeoutExpired:
+        console.print("[red]Folder selection timed out.[/red]")
+        raise typer.Exit(1)
+    except FileNotFoundError:
+        folder_str = typer.prompt(prompt_text)
+        return Path(folder_str).expanduser()
+
+
+def prompt_path_with_default(prompt_text: str, default_path: Path) -> Path:
+    """Prompt for a filesystem path using the configured value as the default."""
+    value = typer.prompt(prompt_text, default=str(default_path.expanduser())).strip()
+    return Path(value).expanduser()
+
+
+def resolve_export_destinations(
+    config: VMEAConfig,
+    *,
+    use_config_paths: bool = False,
+) -> tuple[Path, Path]:
+    """Resolve note/audio destinations, prompting on interactive manual exports."""
+    note_folder = config.output_folder.expanduser()
+    audio_folder = (config.audio_output_folder or config.output_folder).expanduser()
+
+    if use_config_paths or not sys.stdin.isatty():
+        return note_folder, audio_folder
+
+    console.print("[bold]Export Destinations[/bold]")
+    note_folder = prompt_path_with_default("Markdown output folder", note_folder)
+    audio_folder = prompt_path_with_default("Audio output folder", audio_folder)
+    console.print(f"  notes: {note_folder}")
+    console.print(f"  audio: {audio_folder}")
+    return note_folder, audio_folder
+
+
+def parse_ollama_model_list(output: str) -> list[str]:
+    """Parse `ollama list` output into a list of model names."""
+    models: list[str] = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        first = stripped.split()[0]
+        if first.upper() == "NAME":
+            continue
+        models.append(first)
+    return models
+
+
+def list_ollama_models(host: str) -> tuple[list[str], Optional[str]]:
+    """List locally available Ollama models for the configured host."""
+    if shutil.which("ollama") is None:
+        return [], "Ollama CLI is not installed."
+
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = host
+
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return [], "Timed out while contacting Ollama."
+
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "Failed to list Ollama models."
+        return [], message
+
+    return parse_ollama_model_list(result.stdout), None
+
+
+def prompt_ollama_model(saved_model: str, host: str) -> str:
+    """Prompt for the preferred Ollama model, showing the saved and available options."""
+    models, error_message = list_ollama_models(host)
+
+    if models:
+        console.print("[bold]Available Ollama models:[/bold]")
+        for model in models:
+            label = " [dim](saved preference)[/dim]" if model == saved_model else ""
+            console.print(f"  - {model}{label}")
+        if saved_model not in models:
+            console.print(
+                f"[yellow]Saved preferred model not currently listed:[/yellow] {saved_model}"
+            )
+    elif error_message:
+        console.print(f"[yellow]Could not list Ollama models:[/yellow] {error_message}")
+
+    return typer.prompt("Preferred Ollama model", default=saved_model).strip()
 
 
 def version_callback(value: bool) -> None:
@@ -58,69 +221,75 @@ def init() -> None:
     console.print("[bold blue]🎙️ VMEA Setup[/bold blue]\n")
 
     config_path = get_config_path()
+    existing_config: Optional[VMEAConfig] = None
     if config_path.exists():
+        try:
+            existing_config = load_config(config_path)
+        except Exception:
+            existing_config = None
         if not typer.confirm("Config already exists. Overwrite?"):
             raise typer.Exit(0)
 
-    # Use macOS native folder picker
-    console.print("Select your output folder (where notes will be saved)...")
-    try:
-        result = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                'set folderPath to POSIX path of (choose folder with prompt "Select VMEA output folder")'
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0:
-            console.print("[red]Folder selection cancelled.[/red]")
-            raise typer.Exit(1)
-        output_folder = Path(result.stdout.strip())
-    except subprocess.TimeoutExpired:
-        console.print("[red]Folder selection timed out.[/red]")
-        raise typer.Exit(1)
-    except FileNotFoundError:
-        # Fallback for non-macOS or no osascript
-        output_folder_str = typer.prompt("Enter output folder path")
-        output_folder = Path(output_folder_str).expanduser()
+    output_folder = choose_folder("Select the folder where Markdown notes should be saved")
+
+    audio_output_folder: Optional[Path] = None
+    if typer.confirm("Store exported audio in a separate folder?", default=True):
+        audio_output_folder = choose_folder("Select the folder where audio files should be saved")
 
     # Detect source path
     source_path = find_source_path()
     if source_path:
         console.print(f"[green]✓[/green] Found Voice Memos at: {source_path}")
+        use_detected_source = typer.confirm("Use this Voice Memos source folder?", default=True)
+        if not use_detected_source:
+            source_path = None
     else:
         console.print("[yellow]⚠[/yellow] Voice Memos folder not found (will check again on export)")
 
+    source_override: Optional[Path] = source_path
+    if source_override is None:
+        source_input = typer.prompt(
+            "Enter the folder containing your Voice Memo .m4a files (leave blank to auto-detect later)",
+            default="",
+        ).strip()
+        source_override = Path(source_input).expanduser() if source_input else None
+
+    llm_cleanup_enabled = typer.confirm(
+        "Use a local Ollama model to revise transcripts before writing notes?",
+        default=existing_config.llm_cleanup_enabled if existing_config else True,
+    )
+    ollama_model = existing_config.ollama_model if existing_config else "llama3.2:3b"
+    ollama_host = existing_config.ollama_host if existing_config else "http://localhost:11434"
+    if llm_cleanup_enabled:
+        ollama_host = typer.prompt("Ollama host", default=ollama_host).strip()
+        ollama_model = prompt_ollama_model(ollama_model, ollama_host)
+
     # Create config
-    config = VMEAConfig(output_folder=output_folder)
+    config = VMEAConfig(
+        output_folder=output_folder,
+        audio_output_folder=audio_output_folder,
+        audio_export_mode="copy",
+        audio_fallback_to_source_link=False,
+        source_path_override=source_override,
+        llm_cleanup_enabled=llm_cleanup_enabled,
+        ollama_model=ollama_model,
+        ollama_host=ollama_host,
+        keep_original_transcript=True,
+    )
     config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Write config as TOML
-    config_content = f'''# VMEA Configuration
-# Generated on {datetime.now().isoformat()}
-
-output_folder = "{output_folder}"
-default_domain = "voice-memo"
-
-# Transcript settings
-include_native_transcript = true
-transcript_source_priority = "both"
-
-# Reconciliation
-conflict_resolution = "update"
-state_file = ".vmea-state.jsonl"
-
-# LLM cleanup (optional)
-llm_cleanup_enabled = false
-ollama_model = "llama3.2:3b"
-'''
+    config_content = render_config_content(config)
     config_path.write_text(config_content)
 
     console.print(f"\n[green]✓[/green] Config saved to: {config_path}")
     console.print(f"[green]✓[/green] Output folder: {output_folder}")
+    console.print(
+        f"[green]✓[/green] Audio destination: "
+        f"{audio_output_folder or output_folder} (copy)"
+    )
+    if source_override:
+        console.print(f"[green]✓[/green] Source folder: {source_override}")
+    if llm_cleanup_enabled:
+        console.print(f"[green]✓[/green] Ollama model: {ollama_model}")
     console.print("\n[bold]Next steps:[/bold]")
     console.print("  vmea list     – List discovered voice memos")
     console.print("  vmea export   – Export all memos")
@@ -141,9 +310,21 @@ def export(
         bool,
         typer.Option("--force", "-f", help="Force re-export even if unchanged"),
     ] = False,
+    use_config_paths: Annotated[
+        bool,
+        typer.Option("--use-config-paths", hidden=True),
+    ] = False,
 ) -> None:
     """Export voice memos to Markdown notes."""
     config = get_config_or_exit()
+    if config.audio_export_mode != "copy":
+        console.print("[red]✗[/red] Audio export mode must be set to [bold]copy[/bold].")
+        console.print("  Re-run [bold]vmea init[/bold] to save audio files locally.")
+        raise typer.Exit(1)
+    if config.audio_fallback_to_source_link:
+        console.print("[red]✗[/red] Source-link fallback is disabled for normal exports.")
+        console.print("  Re-run [bold]vmea init[/bold] to save audio files locally.")
+        raise typer.Exit(1)
 
     # Find source
     source_path = find_source_path(config.source_path_override)
@@ -153,7 +334,10 @@ def export(
         raise typer.Exit(1)
 
     # Initialize state store
-    output_folder = config.output_folder.expanduser()
+    output_folder, audio_output_folder = resolve_export_destinations(
+        config,
+        use_config_paths=use_config_paths,
+    )
     output_folder.mkdir(parents=True, exist_ok=True)
     state_path = output_folder / config.state_file
     state = StateStore(path=state_path)
@@ -204,12 +388,34 @@ def export(
                 memo_pair.memo_id,
                 config.transcript_source_priority,
             )
+            if not config.include_native_transcript:
+                metadata.transcript = None
+
+            if metadata.transcript:
+                metadata.revised_transcript = metadata.transcript
+                if config.llm_cleanup_enabled:
+                    try:
+                        metadata.revised_transcript = cleanup_transcript(
+                            transcript=metadata.transcript,
+                            model=config.ollama_model,
+                            host=config.ollama_host,
+                            timeout=config.ollama_timeout,
+                            instructions_path=config.cleanup_instructions_path,
+                        )
+                    except Exception as exc:
+                        console.print(
+                            f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
+                            f"Ollama cleanup failed, using original transcript ({exc})"
+                        )
 
             # Write note and copy audio
             note_path, audio_path = write_note(
                 metadata=metadata,
                 output_folder=output_folder,
                 audio_source=memo_pair.audio_path,
+                audio_output_folder=audio_output_folder,
+                audio_export_mode=config.audio_export_mode,
+                audio_fallback_to_source_link=config.audio_fallback_to_source_link,
                 domain=config.default_domain,
                 additional_tags=config.additional_tags,
                 date_format=config.filename_date_format,
@@ -284,7 +490,18 @@ def watch() -> None:
                 console.print(f"  [green]export[/green] {memo_id}")
                 # Trigger export for this memo
                 try:
-                    subprocess.run([sys.executable, "-m", "vmea", "export", "--memo-id", memo_id], check=True)
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "vmea",
+                            "export",
+                            "--use-config-paths",
+                            "--memo-id",
+                            memo_id,
+                        ],
+                        check=True,
+                    )
                 except subprocess.CalledProcessError:
                     console.print(f"  [red]failed[/red] {memo_id}")
 
@@ -396,7 +613,7 @@ def retry_failed() -> None:
         state.remove(record.memo_id)
 
     # Trigger export
-    subprocess.run([sys.executable, "-m", "vmea", "export"])
+    subprocess.run([sys.executable, "-m", "vmea", "export", "--use-config-paths"])
 
 
 @app.command("list")
@@ -472,6 +689,9 @@ def config() -> None:
     cfg = load_config()
     console.print(f"[bold]Output:[/bold]")
     console.print(f"  folder: {cfg.output_folder}")
+    console.print(f"  audio_folder: {cfg.audio_output_folder or cfg.output_folder}")
+    console.print(f"  audio_export_mode: {cfg.audio_export_mode}")
+    console.print(f"  audio_fallback_to_source_link: {cfg.audio_fallback_to_source_link}")
     console.print(f"  structure: {cfg.output_structure}")
     console.print(f"\n[bold]Source:[/bold]")
     if cfg.source_path_override:
@@ -486,6 +706,7 @@ def config() -> None:
     console.print(f"  enabled: {cfg.llm_cleanup_enabled}")
     if cfg.llm_cleanup_enabled:
         console.print(f"  model: {cfg.ollama_model}")
+        console.print(f"  host: {cfg.ollama_host}")
 
 
 # Daemon subcommand group
