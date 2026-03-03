@@ -90,7 +90,7 @@ def transcribe_audio(
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-    import whisper  # type: ignore[import-untyped]
+    import whisper
 
     try:
         # Load the model (downloads if not cached)
