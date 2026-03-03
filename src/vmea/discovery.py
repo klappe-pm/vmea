@@ -4,15 +4,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional
 
-# Known Voice Memos locations on macOS (checked in order)
+# Known Voice Memos locations on macOS (checked in order of preference)
+# Reference: Apple documentation and empirical testing across macOS versions
 VOICE_MEMOS_PATHS = [
-    # macOS Sonoma+ with iCloud (most common current path)
+    # macOS Sonoma (14.x) / Sequoia (15.x) - Group Containers (most common current path)
     Path("~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings"),
-    # macOS Sonoma+ Containers path
+    # iCloud Drive sync staging folder (Mobile Documents)
+    Path("~/Library/Mobile Documents/com~apple~VoiceMemos/Recordings"),
+    # macOS Sonoma+ Containers path variant
     Path("~/Library/Containers/com.apple.VoiceMemos/Data/Library/Application Support/Recordings"),
-    # macOS Ventura and earlier / iCloud disabled
+    # macOS Ventura (13.x) and earlier
     Path("~/Library/Application Support/com.apple.voicememos/Recordings"),
-    # Alternative Application Support path
+    # Alternative Application Support path (case variant)
     Path("~/Library/Application Support/com.apple.VoiceMemos/Recordings"),
 ]
 

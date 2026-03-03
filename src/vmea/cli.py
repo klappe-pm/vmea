@@ -61,7 +61,7 @@ def render_config_content(config: VMEAConfig) -> str:
 # Output
 output_folder = "{output_folder}"
 audio_output_folder = "{audio_output_folder}"
-audio_export_mode = "{config.audio_export_mode}"
+audio_export_mode = "{config.audio_export_mode.value if hasattr(config.audio_export_mode, 'value') else config.audio_export_mode}"
 audio_fallback_to_source_link = {str(config.audio_fallback_to_source_link).lower()}
 default_domain = "{quote_toml_string(config.default_domain)}"
 
@@ -70,7 +70,7 @@ source_path_override = "{source_override}"
 
 # Transcript settings
 include_native_transcript = {str(config.include_native_transcript).lower()}
-transcript_source_priority = "{config.transcript_source_priority}"
+transcript_source_priority = "{config.transcript_source_priority.value if hasattr(config.transcript_source_priority, 'value') else config.transcript_source_priority}"
 
 # LLM cleanup
 llm_cleanup_enabled = {str(config.llm_cleanup_enabled).lower()}
@@ -81,7 +81,7 @@ cleanup_instructions_path = "{cleanup_path}"
 preserve_raw_transcript = {str(config.preserve_raw_transcript).lower()}
 
 # Reconciliation
-conflict_resolution = "{config.conflict_resolution}"
+conflict_resolution = "{config.conflict_resolution.value if hasattr(config.conflict_resolution, 'value') else config.conflict_resolution}"
 state_file = "{quote_toml_string(config.state_file)}"
 '''
 

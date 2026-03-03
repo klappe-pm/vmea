@@ -136,6 +136,39 @@ def get_config_path() -> Path:
     return Path("~/.config/vmea/config.toml").expanduser()
 
 
+def migrate_legacy_config(path: Path) -> None:
+    """Fix enum strings in old config files."""
+    if not path.exists():
+        return
+
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    original = content
+
+    # Replace legacy enum representations
+    content = content.replace('"TranscriptSource.BOTH"', '"both"')
+    content = content.replace('"TranscriptSource.PLIST"', '"plist"')
+    content = content.replace('"TranscriptSource.TSRP"', '"tsrp"')
+    content = content.replace('"ConflictResolution.UPDATE"', '"update"')
+    content = content.replace('"ConflictResolution.SKIP"', '"skip"')
+    content = content.replace('"ConflictResolution.OVERWRITE"', '"overwrite"')
+    content = content.replace('"AudioExportMode.COPY"', '"copy"')
+    content = content.replace('"AudioExportMode.SYMLINK"', '"symlink"')
+    content = content.replace('"AudioExportMode.SOURCE_LINK"', '"source-link"')
+    content = content.replace('"OutputStructure.FLAT"', '"flat"')
+    content = content.replace('"OutputStructure.BY_YEAR"', '"by-year"')
+    content = content.replace('"OutputStructure.BY_MONTH"', '"by-month"')
+    content = content.replace('"LogLevel.DEBUG"', '"DEBUG"')
+    content = content.replace('"LogLevel.INFO"', '"INFO"')
+    content = content.replace('"LogLevel.WARNING"', '"WARNING"')
+    content = content.replace('"LogLevel.ERROR"', '"ERROR"')
+
+    if content != original:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+
 def load_config(config_path: Optional[Path] = None) -> VMEAConfig:
     """Load configuration from TOML file.
 
@@ -148,6 +181,8 @@ def load_config(config_path: Optional[Path] = None) -> VMEAConfig:
     path = config_path or get_config_path()
 
     if path.exists():
+        # Migrate legacy enum representations before loading
+        migrate_legacy_config(path)
         with open(path, "rb") as f:
             data = tomllib.load(f)
         return VMEAConfig(**data)
@@ -167,8 +202,8 @@ def save_config(config: VMEAConfig, config_path: Optional[Path] = None) -> None:
     path = config_path or get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Convert to dict, handling Path objects
-    data = config.model_dump()
+    # Convert to dict using mode='json' to properly serialize enums as values
+    data = config.model_dump(mode="json")
     for key, value in data.items():
         if isinstance(value, Path):
             data[key] = str(value)
