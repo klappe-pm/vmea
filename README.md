@@ -6,6 +6,19 @@
 
 Export Apple Voice Memos to markdown notes with AI-powered transcription and organization.
 
+## Summary
+
+**What it does:** Automatically exports Apple Voice Memos to well-organized markdown files with transcripts, AI-generated titles, key takeaways, and domain categorization.
+
+**How it works:**
+1. **Discovers** Voice Memos from iCloud sync folder
+2. **Extracts** native iOS transcripts (or generates them with Whisper for older memos)
+3. **Enhances** content using local LLM (Ollama) – cleans transcripts, generates titles & summaries
+4. **Writes** markdown notes with YAML frontmatter and consistent naming: `YYYY-MM-DD-XX-title.md`
+5. **Tracks** state to enable incremental updates without duplicates
+
+**Key technologies:** Python 3.11+, OpenAI Whisper (local), Ollama (local LLM), Typer CLI
+
 ## Features
 
 - 🎙️ **Automatic Export** – Convert Voice Memos to markdown with YAML frontmatter
@@ -15,226 +28,6 @@ Export Apple Voice Memos to markdown notes with AI-powered transcription and org
 - 🔗 **Flexible Audio** – Copy files, symlink, or link directly to Voice Memos app
 - 👀 **Watch Mode** – Automatically export new memos as they're recorded
 - 🔄 **Idempotent** – Re-run safely without creating duplicates
-
-## Architecture Overview
-
-### Export Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI
-    participant Discovery
-    participant Parser
-    participant Whisper
-    participant Ollama
-    participant Writer
-    participant State
-
-    User->>CLI: vmea export
-    CLI->>Discovery: find_source_path()
-    Discovery-->>CLI: Voice Memos folder
-    CLI->>Discovery: discover_memos()
-    Discovery-->>CLI: List of MemoPairs
-    
-    loop For each memo
-        CLI->>State: should_export(memo_id)
-        State-->>CLI: (yes/no, reason)
-        
-        alt Should export
-            CLI->>Parser: parse_memo(audio, composition)
-            Parser-->>CLI: MemoMetadata
-            
-            alt No transcript & transcribe_missing=true
-                CLI->>Whisper: transcribe_audio()
-                Whisper-->>CLI: transcript text
-            end
-            
-            alt LLM enabled & has transcript
-                CLI->>Ollama: generate_filename_title()
-                Ollama-->>CLI: "project-kickoff"
-                CLI->>Ollama: cleanup_transcript()
-                Ollama-->>CLI: revised transcript
-                CLI->>Ollama: generate_key_takeaways()
-                Ollama-->>CLI: 5 takeaways
-                CLI->>Ollama: generate_domains()
-                Ollama-->>CLI: domain, sub-domain
-            end
-            
-            CLI->>Writer: write_note()
-            Writer-->>CLI: (note_path, audio_path)
-            CLI->>State: record_export()
-        end
-    end
-    
-    CLI-->>User: Summary (created/skipped/failed)
-```
-
-### Data Flow
-
-```mermaid
-flowchart TB
-    subgraph Input["📥 Input Sources"]
-        VM[("Voice Memos<br/>~/Library/Group Containers/")]
-        M4A["🎵 .m4a files"]
-        COMP["📋 .composition folders"]
-        VM --> M4A
-        VM --> COMP
-    end
-
-    subgraph Processing["⚙️ Processing Pipeline"]
-        PARSE["Parser<br/>Extract metadata & transcript"]
-        WHISPER["Whisper<br/>Generate missing transcripts"]
-        LLM["Ollama LLM<br/>Enhance & categorize"]
-        
-        M4A --> PARSE
-        COMP --> PARSE
-        PARSE -->|No transcript| WHISPER
-        WHISPER --> LLM
-        PARSE -->|Has transcript| LLM
-    end
-
-    subgraph Output["📤 Output"]
-        MD["📝 Markdown Note<br/>2024-03-15-00-meeting-notes.md"]
-        AUDIO["🔊 Audio File<br/>Audio/2024-03-15-00-meeting-notes.m4a"]
-        STATE[("State Store<br/>.vmea-state.jsonl")]
-        
-        LLM --> MD
-        LLM --> AUDIO
-        MD --> STATE
-    end
-
-    style Input fill:#e1f5fe
-    style Processing fill:#fff3e0
-    style Output fill:#e8f5e9
-```
-
-### Class Diagram
-
-```mermaid
-classDiagram
-    class MemoMetadata {
-        +str memo_id
-        +str title
-        +datetime created
-        +datetime modified
-        +float duration_seconds
-        +str transcript
-        +str revised_transcript
-        +str transcript_source
-        +str custom_label
-        +bool is_favorited
-    }
-
-    class MemoPair {
-        +Path audio_path
-        +Path composition_path
-        +str memo_id
-        +has_composition() bool
-    }
-
-    class MemoState {
-        +str memo_id
-        +str source_hash
-        +str note_path
-        +str audio_path
-        +str exported_at
-        +str transcript_source
-    }
-
-    class StateStore {
-        +Path path
-        -dict _records
-        +get(memo_id) MemoState
-        +set(record) void
-        +remove(memo_id) bool
-        +all() Iterator
-    }
-
-    class VMEAConfig {
-        +Path output_folder
-        +str audio_export_mode
-        +bool llm_cleanup_enabled
-        +str ollama_model
-        +str whisper_model
-        +bool transcribe_missing
-    }
-
-    class TranscriptionResult {
-        +str text
-        +str model
-        +str language
-    }
-
-    class CleanupResult {
-        +str revised_transcript
-        +str instruction_source
-        +str model
-    }
-
-    class DomainResult {
-        +str domain
-        +str sub_domain
-    }
-
-    MemoPair --> MemoMetadata : parsed into
-    MemoMetadata --> MemoState : exported as
-    StateStore --> MemoState : manages
-    VMEAConfig --> StateStore : configures
-```
-
-### Decision Logic
-
-```mermaid
-flowchart TD
-    START([Start Export]) --> DISCOVER[Discover Memos]
-    DISCOVER --> LOOP{More memos?}
-    
-    LOOP -->|Yes| CHECK[Check State]
-    CHECK --> SHOULD{Should export?}
-    
-    SHOULD -->|No: unchanged| SKIP[Skip memo]
-    SKIP --> LOOP
-    
-    SHOULD -->|Yes| PARSE[Parse Metadata]
-    PARSE --> HAS_TRANS{Has transcript?}
-    
-    HAS_TRANS -->|No| WHISPER_CHECK{Whisper enabled?}
-    WHISPER_CHECK -->|Yes| TRANSCRIBE[Transcribe with Whisper]
-    WHISPER_CHECK -->|No| LLM_CHECK
-    TRANSCRIBE --> LLM_CHECK
-    
-    HAS_TRANS -->|Yes| LLM_CHECK{LLM enabled?}
-    
-    LLM_CHECK -->|Yes| GEN_TITLE[Generate Filename Title]
-    GEN_TITLE --> CLEANUP[Cleanup Transcript]
-    CLEANUP --> TAKEAWAYS[Generate Key Takeaways]
-    TAKEAWAYS --> DOMAINS[Generate Domains]
-    DOMAINS --> WRITE
-    
-    LLM_CHECK -->|No| WRITE[Write Note]
-    
-    WRITE --> AUDIO_MODE{Audio mode?}
-    AUDIO_MODE -->|copy| COPY[Copy Audio File]
-    AUDIO_MODE -->|app-link| LINK[Create App Link]
-    AUDIO_MODE -->|symlink| SYM[Create Symlink]
-    
-    COPY --> RECORD
-    LINK --> RECORD
-    SYM --> RECORD
-    
-    RECORD[Record to State] --> LOOP
-    
-    LOOP -->|No| DONE([Done])
-
-    style START fill:#4caf50,color:#fff
-    style DONE fill:#4caf50,color:#fff
-    style TRANSCRIBE fill:#ff9800,color:#fff
-    style GEN_TITLE fill:#2196f3,color:#fff
-    style CLEANUP fill:#2196f3,color:#fff
-    style TAKEAWAYS fill:#2196f3,color:#fff
-    style DOMAINS fill:#2196f3,color:#fff
-```
 
 ## Installation
 
@@ -409,27 +202,13 @@ ollama_host = "http://localhost:11434"
 
 VMEA extracts transcripts from multiple sources:
 
-```mermaid
-flowchart LR
-    subgraph Native["Native iOS Transcription"]
-        TSRP["tsrp atom<br/>(iOS 18+)"] 
-        PLIST["manifest.plist<br/>(composition folder)"]
-    end
-    
-    subgraph Generated["Generated"]
-        WHISPER["Whisper<br/>(local AI)"]
-    end
-    
-    TSRP --> TRANSCRIPT[Final Transcript]
-    PLIST --> TRANSCRIPT
-    WHISPER --> TRANSCRIPT
-    
-    style TSRP fill:#4caf50,color:#fff
-    style PLIST fill:#4caf50,color:#fff  
-    style WHISPER fill:#ff9800,color:#fff
-```
-
 **Priority:** `tsrp` → `plist` → `whisper` (fallback)
+
+| Source | Description | Availability |
+|--------|-------------|-------------|
+| `tsrp` | Embedded in .m4a file | iOS 18+ / macOS 15+ |
+| `plist` | manifest.plist in .composition folder | iOS 17+ |
+| `whisper` | Generated locally via OpenAI Whisper | Any memo (fallback) |
 
 ## LLM Processing
 
@@ -514,3 +293,338 @@ vmea ollama start
 ## License
 
 MIT – see [LICENSE](LICENSE)
+
+---
+
+## Architecture Diagrams
+
+> Visual documentation of system architecture and data flow.
+
+### Color Legend
+
+| Color | Meaning |
+|-------|--------|
+| 🟦 Blue (`#3b82f6`) | Input / Source data |
+| 🟨 Amber (`#f59e0b`) | Whisper transcription |
+| 🟪 Purple (`#8b5cf6`) | LLM / Ollama processing |
+| 🟩 Green (`#10b981`) | Output / Write operations |
+| ⬜ Slate (`#64748b`) | State / Storage |
+
+### Export Sequence Diagram
+
+Shows the complete flow of a `vmea export` command:
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#3b82f6', 'secondaryColor': '#f59e0b', 'tertiaryColor': '#8b5cf6'}}}%%
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Discovery
+    participant Parser
+    participant Whisper
+    participant Ollama
+    participant Writer
+    participant State
+
+    rect rgb(59, 130, 246, 0.1)
+        Note over User,State: Initialization
+        User->>CLI: vmea export
+        CLI->>Discovery: find_source_path()
+        Discovery-->>CLI: Voice Memos folder
+        CLI->>Discovery: discover_memos()
+        Discovery-->>CLI: List of MemoPairs
+    end
+    
+    loop For each memo
+        rect rgb(100, 116, 139, 0.1)
+            Note over CLI,State: State Check
+            CLI->>State: should_export(memo_id)
+            State-->>CLI: (yes/no, reason)
+        end
+        
+        alt Should export
+            rect rgb(59, 130, 246, 0.1)
+                Note over CLI,Parser: Parse
+                CLI->>Parser: parse_memo(audio, composition)
+                Parser-->>CLI: MemoMetadata
+            end
+            
+            alt No transcript & transcribe_missing=true
+                rect rgb(245, 158, 11, 0.1)
+                    Note over CLI,Whisper: Transcription
+                    CLI->>Whisper: transcribe_audio()
+                    Whisper-->>CLI: transcript text
+                end
+            end
+            
+            alt LLM enabled & has transcript
+                rect rgb(139, 92, 246, 0.1)
+                    Note over CLI,Ollama: LLM Enhancement
+                    CLI->>Ollama: generate_filename_title()
+                    Ollama-->>CLI: "project-kickoff"
+                    CLI->>Ollama: cleanup_transcript()
+                    Ollama-->>CLI: revised transcript
+                    CLI->>Ollama: generate_key_takeaways()
+                    Ollama-->>CLI: 5 takeaways
+                    CLI->>Ollama: generate_domains()
+                    Ollama-->>CLI: domain, sub-domain
+                end
+            end
+            
+            rect rgb(16, 185, 129, 0.1)
+                Note over CLI,State: Output
+                CLI->>Writer: write_note()
+                Writer-->>CLI: (note_path, audio_path)
+                CLI->>State: record_export()
+            end
+        end
+    end
+    
+    CLI-->>User: Summary (created/skipped/failed)
+```
+
+### Data Flow Diagram
+
+Shows how data moves through the processing pipeline:
+
+```mermaid
+%%{init: {'theme': 'base'}}%%
+flowchart TB
+    subgraph Input["📥 Input Sources"]
+        VM[("Voice Memos<br/>~/Library/Group Containers/")]
+        M4A["🎵 .m4a audio files"]
+        COMP["📋 .composition metadata"]
+        VM --> M4A
+        VM --> COMP
+    end
+
+    subgraph Parse["📖 Parsing"]
+        PARSER["Parser Module<br/>Extract metadata"]
+        META["MemoMetadata"]
+        M4A --> PARSER
+        COMP --> PARSER
+        PARSER --> META
+    end
+
+    subgraph Transcribe["🎤 Transcription"]
+        NATIVE{"Has native<br/>transcript?"}
+        WHISPER["Whisper<br/>Speech-to-Text"]
+        TRANS["Transcript Text"]
+        META --> NATIVE
+        NATIVE -->|No| WHISPER
+        NATIVE -->|Yes| TRANS
+        WHISPER --> TRANS
+    end
+
+    subgraph LLM["🤖 LLM Enhancement"]
+        TITLE["Generate Title"]
+        CLEANUP["Cleanup Transcript"]
+        TAKEAWAY["Key Takeaways"]
+        DOMAIN["Domain Classification"]
+        TRANS --> TITLE
+        TRANS --> CLEANUP
+        TRANS --> TAKEAWAY
+        TRANS --> DOMAIN
+    end
+
+    subgraph Output["📤 Output"]
+        WRITE["Writer Module"]
+        MD["📝 Markdown Note"]
+        AUDIO["🔊 Audio File"]
+        STATE[("State Store")]
+        TITLE --> WRITE
+        CLEANUP --> WRITE
+        TAKEAWAY --> WRITE
+        DOMAIN --> WRITE
+        WRITE --> MD
+        WRITE --> AUDIO
+        MD --> STATE
+    end
+
+    style Input fill:#dbeafe,stroke:#3b82f6,stroke-width:2px
+    style Parse fill:#dbeafe,stroke:#3b82f6,stroke-width:2px
+    style Transcribe fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    style LLM fill:#ede9fe,stroke:#8b5cf6,stroke-width:2px
+    style Output fill:#d1fae5,stroke:#10b981,stroke-width:2px
+    style WHISPER fill:#f59e0b,color:#fff
+    style TITLE fill:#8b5cf6,color:#fff
+    style CLEANUP fill:#8b5cf6,color:#fff
+    style TAKEAWAY fill:#8b5cf6,color:#fff
+    style DOMAIN fill:#8b5cf6,color:#fff
+    style STATE fill:#64748b,color:#fff
+```
+
+### Decision Flowchart
+
+Shows the branching logic during export:
+
+```mermaid
+%%{init: {'theme': 'base'}}%%
+flowchart TD
+    START(["🚀 Start Export"]) --> DISCOVER["Discover Memos"]
+    DISCOVER --> LOOP{"More memos?"}
+    
+    LOOP -->|Yes| CHECK["Check State"]
+    CHECK --> SHOULD{"Should export?"}
+    
+    SHOULD -->|"No: unchanged"| SKIP["⏭️ Skip memo"]
+    SKIP --> LOOP
+    
+    SHOULD -->|Yes| PARSE["Parse Metadata"]
+    PARSE --> HAS_TRANS{"Has transcript?"}
+    
+    HAS_TRANS -->|No| WHISPER_CHECK{"Whisper enabled?"}
+    WHISPER_CHECK -->|Yes| TRANSCRIBE["🎤 Transcribe with Whisper"]
+    WHISPER_CHECK -->|No| LLM_CHECK
+    TRANSCRIBE --> LLM_CHECK
+    
+    HAS_TRANS -->|Yes| LLM_CHECK{"LLM enabled?"}
+    
+    LLM_CHECK -->|Yes| GEN_TITLE["🏷️ Generate Title"]
+    GEN_TITLE --> CLEANUP_T["✨ Cleanup Transcript"]
+    CLEANUP_T --> TAKEAWAYS["📝 Generate Takeaways"]
+    TAKEAWAYS --> DOMAINS["🗂️ Categorize Domain"]
+    DOMAINS --> WRITE
+    
+    LLM_CHECK -->|No| WRITE["💾 Write Note"]
+    
+    WRITE --> AUDIO_MODE{"Audio mode?"}
+    AUDIO_MODE -->|copy| COPY["📁 Copy Audio"]
+    AUDIO_MODE -->|app-link| LINK["🔗 Create Link"]
+    AUDIO_MODE -->|symlink| SYM["↗️ Symlink"]
+    
+    COPY --> RECORD
+    LINK --> RECORD
+    SYM --> RECORD
+    
+    RECORD["📊 Record State"] --> LOOP
+    
+    LOOP -->|No| DONE(["✅ Done"])
+
+    style START fill:#10b981,color:#fff,stroke:#059669
+    style DONE fill:#10b981,color:#fff,stroke:#059669
+    style TRANSCRIBE fill:#f59e0b,color:#fff,stroke:#d97706
+    style GEN_TITLE fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style CLEANUP_T fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style TAKEAWAYS fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style DOMAINS fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style WRITE fill:#10b981,color:#fff,stroke:#059669
+    style RECORD fill:#64748b,color:#fff,stroke:#475569
+    style SKIP fill:#94a3b8,color:#fff
+```
+
+### Class Diagram
+
+Shows the main data structures and their relationships:
+
+```mermaid
+%%{init: {'theme': 'base'}}%%
+classDiagram
+    class MemoPair {
+        +Path audio_path
+        +Path composition_path
+        +str memo_id
+        +has_composition() bool
+    }
+
+    class MemoMetadata {
+        +str memo_id
+        +str title
+        +datetime created
+        +datetime modified
+        +float duration_seconds
+        +str transcript
+        +str revised_transcript
+        +str transcript_source
+        +str custom_label
+        +bool is_favorited
+    }
+
+    class MemoState {
+        +str memo_id
+        +str source_hash
+        +str note_path
+        +str audio_path
+        +str exported_at
+        +str transcript_source
+    }
+
+    class StateStore {
+        +Path path
+        -dict _records
+        +get(memo_id) MemoState
+        +set(record) void
+        +remove(memo_id) bool
+        +all() Iterator
+        +compact() int
+    }
+
+    class VMEAConfig {
+        +Path output_folder
+        +str audio_export_mode
+        +bool llm_cleanup_enabled
+        +str ollama_model
+        +str whisper_model
+        +bool transcribe_missing
+    }
+
+    class TranscriptionResult {
+        +str text
+        +str model
+        +str language
+    }
+
+    class CleanupResult {
+        +str revised_transcript
+        +str instruction_source
+        +str model
+    }
+
+    class DomainResult {
+        +str domain
+        +str sub_domain
+    }
+
+    MemoPair --> MemoMetadata : parsed into
+    MemoMetadata --> MemoState : exported as
+    StateStore --> MemoState : manages
+    VMEAConfig --> StateStore : configures
+
+    style MemoPair fill:#dbeafe,stroke:#3b82f6
+    style MemoMetadata fill:#dbeafe,stroke:#3b82f6
+    style MemoState fill:#f1f5f9,stroke:#64748b
+    style StateStore fill:#f1f5f9,stroke:#64748b
+    style VMEAConfig fill:#f1f5f9,stroke:#64748b
+    style TranscriptionResult fill:#fef3c7,stroke:#f59e0b
+    style CleanupResult fill:#ede9fe,stroke:#8b5cf6
+    style DomainResult fill:#ede9fe,stroke:#8b5cf6
+```
+
+### Transcription Sources Diagram
+
+Shows the priority of transcript sources:
+
+```mermaid
+%%{init: {'theme': 'base'}}%%
+flowchart LR
+    subgraph Native["Native iOS Transcription"]
+        TSRP["tsrp atom<br/>(iOS 18+)"]
+        PLIST["manifest.plist<br/>(iOS 17+)"]
+    end
+    
+    subgraph Generated["Generated Locally"]
+        WHISPER["OpenAI Whisper<br/>(any memo)"]
+    end
+    
+    TSRP -->|"Priority 1"| TRANSCRIPT
+    PLIST -->|"Priority 2"| TRANSCRIPT
+    WHISPER -->|"Fallback"| TRANSCRIPT
+    TRANSCRIPT["📝 Final Transcript"]
+    
+    style Native fill:#d1fae5,stroke:#10b981,stroke-width:2px
+    style Generated fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    style TSRP fill:#10b981,color:#fff
+    style PLIST fill:#10b981,color:#fff
+    style WHISPER fill:#f59e0b,color:#fff
+    style TRANSCRIPT fill:#3b82f6,color:#fff
+```
