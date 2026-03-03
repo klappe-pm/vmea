@@ -13,40 +13,22 @@ output_folder = ""
 # Leave empty to use output_folder/audio/
 audio_output_folder = ""
 
-# Audio is always copied into the configured local export folder
-audio_export_mode = "copy"
+# How to reference audio in exported notes
+# Options: "copy", "symlink", "source-link", "app-link"
+audio_export_mode = "app-link"
 
-# Do not fall back to source links; fail instead so local audio stays required
+# Fall back to source-link if the preferred mode fails
 audio_fallback_to_source_link = false
-
-# Subdirectory structure within output_folder
-# Options: "flat", "by-year", "by-month"
-output_structure = "flat"
 
 # =============================================================================
 # Metadata & Frontmatter
 # =============================================================================
 
-# Default domain for all voice memos (required frontmatter field)
+# Default domain for all voice memos (frontmatter field)
 default_domain = ""
-
-# Default subdomain for all voice memos (required frontmatter field)
-default_subdomain = ""
-
-# Default tags for all memos
-additional_tags = ["voice-memo"]
-
-# Alias mode: "title" uses memo title as alias, "none" for empty aliases
-default_alias_mode = "title"
 
 # Date format for filenames (uses Python strftime)
 filename_date_format = "%Y-%m-%d"
-
-# Slug separator for filenames
-slug_separator = "-"
-
-# Maximum filename length (excluding extension)
-max_filename_length = 100
 
 # =============================================================================
 # Source Detection
@@ -80,8 +62,13 @@ transcript_source_priority = "both"
 # When disabled, VMEA exports using raw transcript without Ollama dependency
 llm_cleanup_enabled = false
 
-# Ollama model to use for cleanup
+# Ollama model to use for cleanup (single model mode)
 ollama_model = "llama3.2:3b"
+
+# Cascade mode: list of models for progressive refinement
+# Example: ["llama3.2:3b", "mistral:7b", "llama3.2:3b"]
+# Leave empty to use single model mode
+ollama_models = []
 
 # Ollama server host
 ollama_host = "http://localhost:11434"
@@ -90,7 +77,7 @@ ollama_host = "http://localhost:11434"
 ollama_timeout = 120
 
 # Explicit path to cleanup instructions file
-# If empty, searches for: CLAUDE.md, GEMINI.md, README.md in output folder
+# If empty, searches for: cleanup_instructions.md, CLAUDE.md, GEMINI.md, README.md in output folder
 cleanup_instructions_path = ""
 
 # Fail if no instruction file found (when cleanup enabled)
@@ -101,6 +88,19 @@ preserve_raw_transcript = true
 
 # Ollama startup mode: "terminal_managed" or "background"
 ollama_startup_mode = "terminal_managed"
+
+# =============================================================================
+# Whisper Transcription
+# =============================================================================
+
+# Whisper model size: tiny, base, small, medium, large
+whisper_model = "base"
+
+# Language for Whisper (empty = auto-detect)
+whisper_language = ""
+
+# Transcribe memos that have no native transcript
+transcribe_missing = true
 
 # =============================================================================
 # Reconciliation & State
@@ -117,36 +117,8 @@ state_file = ".vmea-state.jsonl"
 # Background Processing
 # =============================================================================
 
-# Enable filesystem watching
-watch_enabled = true
-
-# Debounce delay for file changes (seconds)
+# Debounce delay for file changes in watch mode (seconds)
 watch_debounce_seconds = 5
-
-# File stability check iterations
-stability_check_count = 3
-
-# Stability check interval (seconds)
-stability_check_interval = 2
-
-# Periodic full reconciliation interval (minutes, 0 = disable)
-reconcile_interval_minutes = 60
-
-# =============================================================================
-# Logging & Diagnostics
-# =============================================================================
-
-# Log level: DEBUG, INFO, WARNING, ERROR
-log_level = "INFO"
-
-# Log file location (empty = console only)
-log_file = "~/.local/share/vmea/vmea.log"
-
-# Maximum log file size (MB) before rotation
-log_max_size_mb = 10
-
-# Number of rotated log files to keep
-log_backup_count = 3
 
 # =============================================================================
 # Advanced
@@ -154,12 +126,3 @@ log_backup_count = 3
 
 # Dry run mode (no files written)
 dry_run = false
-
-# Parallel processing workers (0 = auto based on CPU)
-workers = 0
-
-# Skip memos older than this date (ISO format, empty = no limit)
-skip_before_date = ""
-
-# Skip memos with duration less than this (seconds, 0 = no limit)
-min_duration_seconds = 0

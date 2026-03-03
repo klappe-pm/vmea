@@ -99,11 +99,20 @@ class StateStore:
         return memo_id in self._records
 
 
+def _hash_file_chunked(hasher: "hashlib._Hash", file_path: Path, chunk_size: int = 65536) -> None:
+    """Hash a file in chunks to avoid loading large files into memory."""
+    with open(file_path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+
+
 def compute_source_hash(audio_path: Path, composition_path: Path | None) -> str:
     """Compute a hash of the source files for change detection.
 
-    Includes file content, size, and modification time to catch all changes,
-    including appended audio content.
+    Uses chunked reading to avoid loading large audio files into memory.
 
     Args:
         audio_path: Path to .m4a file.
@@ -114,21 +123,19 @@ def compute_source_hash(audio_path: Path, composition_path: Path | None) -> str:
     """
     hasher = hashlib.sha256()
 
-    # Hash audio file content, size, and mtime
+    # Hash audio file content in chunks
     if audio_path.exists():
         stat = audio_path.stat()
-        # Include size and mtime in hash for faster change detection
         hasher.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode())
-        hasher.update(audio_path.read_bytes())
+        _hash_file_chunked(hasher, audio_path)
 
     # Hash composition folder contents if present
     if composition_path and composition_path.exists():
-        # Hash all files in the composition folder (manifest.plist, segments, etc.)
         for file in sorted(composition_path.iterdir()):
             if file.is_file():
                 stat = file.stat()
                 hasher.update(f"{file.name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
-                hasher.update(file.read_bytes())
+                _hash_file_chunked(hasher, file)
 
     return hasher.hexdigest()[:16]  # Truncate for readability
 

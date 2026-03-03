@@ -3,7 +3,7 @@
 import plistlib
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -255,8 +255,9 @@ def extract_duration_from_m4a(audio_path: Path) -> float | None:
         audio = MP4(audio_path)  # type: ignore[no-untyped-call]
         if audio.info and audio.info.length:
             return audio.info.length
-    except Exception:
-        pass
+    except (OSError, Exception) as exc:
+        # mutagen can raise various exceptions for corrupt/unreadable files
+        _ = exc  # explicitly acknowledge the error
     return None
 
 
@@ -272,7 +273,11 @@ def generate_title_from_date(dt: datetime) -> str:
     Returns:
         Formatted title like "Voice Memo - Aug 9, 2025 8:27:43 PM"
     """
-    return dt.strftime("Voice Memo - %b %-d, %Y %-I:%M:%S %p")
+    # Use platform-safe formatting (no %-d which is Linux-only)
+    day = dt.day
+    hour = dt.hour % 12 or 12
+    ampm = "AM" if dt.hour < 12 else "PM"
+    return f"Voice Memo - {dt.strftime('%b')} {day}, {dt.year} {hour}:{dt.strftime('%M:%S')} {ampm}"
 
 
 def parse_memo(
@@ -338,14 +343,18 @@ def parse_memo(
     if not metadata.created:
         try:
             stat = audio_path.stat()
-            metadata.created = datetime.fromtimestamp(stat.st_birthtime)
+            metadata.created = datetime.fromtimestamp(
+                stat.st_birthtime, tz=UTC  # type: ignore[attr-defined]
+            ).replace(tzinfo=None)
         except (OSError, AttributeError):
             pass
 
     if not metadata.modified:
         try:
             stat = audio_path.stat()
-            metadata.modified = datetime.fromtimestamp(stat.st_mtime)
+            metadata.modified = datetime.fromtimestamp(
+                stat.st_mtime, tz=UTC
+            ).replace(tzinfo=None)
         except OSError:
             pass
 

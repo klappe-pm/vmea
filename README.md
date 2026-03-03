@@ -352,4 +352,3 @@ All diagrams have been moved into dedicated files under `docs/diagrams/`.
 - [Export Decision Flowchart](docs/diagrams/export-decision-flowchart.md)
 - [Core Data Model Class Diagram](docs/diagrams/core-data-model-class-diagram.md)
 - [Transcript Source Priority Diagram](docs/diagrams/transcript-source-priority-diagram.md)
-```

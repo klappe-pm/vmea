@@ -4,7 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -461,6 +461,266 @@ def init() -> None:
     console.print("  vmea doctor   – Check system health")
 
 
+def export_memo(
+    memo_pair: Any,
+    config: VMEAConfig,
+    output_folder: Path,
+    state: StateStore,
+    conflict_mode: str,
+    llm_enabled: bool,
+    selected_models: list[str],
+    use_cascade: bool,
+    dry_run: bool = False,
+    force: bool = False,
+) -> str:
+    """Export a single memo. Returns 'created', 'skipped', or 'failed'.
+
+    This is the core export pipeline extracted from the export command
+    so it can be called directly by watch mode and retry-failed.
+    """
+    try:
+        # Compute hash for change detection
+        source_hash = compute_source_hash(memo_pair.audio_path, memo_pair.composition_path)
+        source_mtime = datetime.fromtimestamp(
+            memo_pair.audio_path.stat().st_mtime, tz=UTC
+        ).replace(tzinfo=None)
+
+        # Check if we should export
+        do_export, reason = should_export(
+            memo_pair.memo_id, source_hash, state, conflict_mode, source_mtime
+        )
+
+        if not do_export and not force:
+            console.print(f"  [dim]skip[/dim]  {memo_pair.memo_id} ({reason})")
+            return "skipped"
+
+        # Parse metadata
+        metadata = parse_memo(
+            memo_pair.audio_path,
+            memo_pair.composition_path,
+            memo_pair.memo_id,
+            config.transcript_source_priority,
+        )
+
+        # Whisper transcription if no native transcript and transcribe_missing is enabled
+        if not metadata.transcript and config.transcribe_missing:
+            try:
+                from vmea.transcribe import transcribe_if_needed
+
+                console.print(f"  [dim]transcribing[/dim] {memo_pair.memo_id}...")
+                transcript_text, transcript_source = transcribe_if_needed(
+                    audio_path=memo_pair.audio_path,
+                    existing_transcript=metadata.transcript,
+                    model=config.whisper_model,
+                    language=config.whisper_language,
+                )
+                if transcript_text:
+                    metadata.transcript = transcript_text
+                    metadata.transcript_source = transcript_source
+                    console.print(f"  [green]✓[/green] Transcribed with Whisper ({transcript_source})")
+            except ImportError:
+                console.print(
+                    f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
+                    "Whisper not installed. Install with: pip install 'vmea[transcribe]'"
+                )
+            except Exception as exc:
+                console.print(
+                    f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
+                    f"Whisper transcription failed ({exc})"
+                )
+
+        # LLM processing: cleanup transcript, generate key takeaways, domains, and filename title
+        key_takeaways: list[str] | None = None
+        llm_model = ""
+        domains = ""
+        sub_domains = ""
+        llm_title = ""
+        if metadata.transcript and llm_enabled and selected_models:
+            try:
+                # Use first model for auxiliary tasks, cascade for main cleanup
+                primary_model = selected_models[0]
+                llm_model = " \u2192 ".join(selected_models) if use_cascade else primary_model
+
+                # Generate filename title first (needed for write_note)
+                llm_title = generate_filename_title(
+                    transcript=metadata.transcript,
+                    model=primary_model,
+                    host=config.ollama_host,
+                    timeout=config.ollama_timeout,
+                )
+
+                # Clean up transcript (cascade or single model)
+                if use_cascade:
+                    console.print(f"  [dim]cascade cleanup[/dim] {memo_pair.memo_id[:12]}...")
+                    cascade_result = cascade_cleanup_transcript(
+                        transcript=metadata.transcript,
+                        models=selected_models,
+                        host=config.ollama_host,
+                        timeout=config.ollama_timeout,
+                        instructions_path=config.cleanup_instructions_path,
+                        search_dir=output_folder,
+                        fail_on_missing_instruction=config.fail_on_missing_instruction_file,
+                    )
+                    metadata.revised_transcript = cascade_result.revised_transcript
+                else:
+                    cleanup_result = cleanup_transcript(
+                        transcript=metadata.transcript,
+                        model=primary_model,
+                        host=config.ollama_host,
+                        timeout=config.ollama_timeout,
+                        instructions_path=config.cleanup_instructions_path,
+                        search_dir=output_folder,
+                        fail_on_missing_instruction=config.fail_on_missing_instruction_file,
+                    )
+                    metadata.revised_transcript = cleanup_result.revised_transcript
+
+                # Generate key takeaways (using primary model)
+                key_takeaways = generate_key_takeaways(
+                    transcript=metadata.transcript,
+                    model=primary_model,
+                    host=config.ollama_host,
+                    timeout=config.ollama_timeout,
+                )
+
+                # Generate domain categorization (using primary model)
+                domain_result = generate_domains(
+                    transcript=metadata.transcript,
+                    model=primary_model,
+                    host=config.ollama_host,
+                    timeout=config.ollama_timeout,
+                )
+                domains = domain_result.domain
+                sub_domains = domain_result.sub_domain
+            except Exception as exc:
+                console.print(
+                    f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
+                    f"LLM processing failed ({exc})"
+                )
+
+        # Write note and optionally copy audio
+        note_path, audio_path = write_note(
+            metadata=metadata,
+            output_folder=output_folder,
+            audio_source=memo_pair.audio_path,
+            key_takeaways=key_takeaways,
+            llm_model=llm_model,
+            domains=domains,
+            sub_domains=sub_domains,
+            date_format=config.filename_date_format,
+            dry_run=dry_run,
+            audio_export_mode=config.audio_export_mode,
+            llm_title=llm_title,
+        )
+
+        # Record in state
+        if not dry_run:
+            record_export(
+                state=state,
+                memo_id=memo_pair.memo_id,
+                source_hash=source_hash,
+                note_path=note_path,
+                audio_path=audio_path,
+                source_modified=metadata.modified,
+                transcript_source=metadata.transcript_source,
+            )
+
+        console.print(f"  [green]create[/green] {note_path.name}")
+        return "created"
+
+    except Exception as e:
+        console.print(f"  [red]fail[/red]  {memo_pair.memo_id}: {e}")
+        return "failed"
+
+
+def _prepare_llm(
+    config: VMEAConfig,
+    interactive: bool = True,
+) -> tuple[bool, list[str], bool]:
+    """Prepare Ollama for LLM processing.
+
+    Returns:
+        Tuple of (llm_enabled, selected_models, use_cascade).
+    """
+    llm_enabled = config.llm_cleanup_enabled
+    saved_models = config.ollama_models if config.ollama_models else [config.ollama_model]
+    selected_models: list[str] = []
+    use_cascade = False
+
+    if not llm_enabled:
+        return llm_enabled, selected_models, use_cascade
+
+    console.print("[dim]Starting Ollama...[/dim]")
+    terminal_mode = config.ollama_startup_mode == "terminal_managed"
+
+    # Start Ollama server if not running
+    if not is_ollama_running(config.ollama_host):
+        success, err = start_ollama(
+            host=config.ollama_host,
+            terminal_mode=terminal_mode,
+        )
+        if not success:
+            console.print(f"[red]✗[/red] Could not start Ollama: {err}")
+            if interactive and not typer.confirm("Continue without LLM cleanup?", default=False):
+                raise typer.Exit(1)
+            return False, [], False
+
+    console.print("[green]✓[/green] Ollama is running")
+
+    if not interactive:
+        # Non-interactive: use configured models directly
+        selected_models = saved_models
+        use_cascade = len(selected_models) > 1
+        # Preload first model
+        success, err = preload_model(selected_models[0], config.ollama_host)
+        if not success:
+            console.print(f"[yellow]⚠[/yellow] Could not preload model: {err}")
+        return llm_enabled, selected_models, use_cascade
+
+    # Interactive: ask if user wants cascade mode
+    if typer.confirm("Use cascade mode (multiple models for progressive refinement)?", default=len(saved_models) > 1):
+        picked = prompt_ollama_models(
+            saved_models=saved_models,
+            host=config.ollama_host,
+            allow_skip=True,
+            max_models=3,
+        )
+        if not picked:
+            console.print("[dim]Skipping LLM processing.[/dim]")
+            return False, [], False
+        selected_models = picked
+        use_cascade = len(selected_models) > 1
+        console.print(f"[dim]Preloading {selected_models[0]}...[/dim]")
+        success, err = preload_model(selected_models[0], config.ollama_host)
+        if not success:
+            console.print(f"[yellow]⚠[/yellow] Could not preload model: {err}")
+        if use_cascade:
+            console.print(f"[green]✓[/green] Cascade mode: {' → '.join(selected_models)}")
+        else:
+            console.print(f"[green]✓[/green] Ready with model: {selected_models[0]}")
+    else:
+        # Single model selection
+        picked = prompt_ollama_models(
+            saved_models=saved_models[:1],
+            host=config.ollama_host,
+            allow_skip=True,
+            max_models=1,
+        )
+        if not picked:
+            console.print("[dim]Skipping LLM processing.[/dim]")
+            return False, [], False
+        selected_models = picked
+        console.print(f"[dim]Preloading {selected_models[0]}...[/dim]")
+        success, err = preload_model(selected_models[0], config.ollama_host)
+        if not success:
+            console.print(f"[yellow]⚠[/yellow] Could not preload model: {err}")
+            if not typer.confirm("Continue without LLM cleanup?", default=False):
+                raise typer.Exit(1)
+            return False, [], False
+        console.print(f"[green]✓[/green] Ready with model: {selected_models[0]}")
+
+    return llm_enabled, selected_models, use_cascade
+
+
 @app.command()
 def export(
     memo_id: Annotated[
@@ -475,6 +735,10 @@ def export(
         bool,
         typer.Option("--force", "-f", help="Force re-export even if unchanged"),
     ] = False,
+    use_config_paths: Annotated[
+        bool,
+        typer.Option("--use-config-paths", help="Use config paths without interactive prompts"),
+    ] = False,
 ) -> None:
     """Export voice memos to Markdown notes."""
     config = get_config_or_exit()
@@ -486,8 +750,11 @@ def export(
         console.print("  Check Full Disk Access in System Settings > Privacy & Security")
         raise typer.Exit(1)
 
-    # Always prompt for output folder
-    output_folder = prompt_output_folder(config.output_folder)
+    # Use config paths directly in non-interactive mode, otherwise prompt
+    if use_config_paths:
+        output_folder = config.output_folder.expanduser()
+    else:
+        output_folder = prompt_output_folder(config.output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
 
     # State tracking
@@ -511,236 +778,31 @@ def export(
     if dry_run:
         console.print("[dim](dry run mode – no files will be written)[/dim]\n")
 
-    # Prepare Ollama – start server, show model picker, preload
-    llm_enabled = config.llm_cleanup_enabled
-    # Use cascade models if configured, else fall back to single model
-    saved_models = config.ollama_models if config.ollama_models else [config.ollama_model]
-    selected_models: list[str] = []
-    use_cascade = False
-
-    if llm_enabled:
-        console.print("[dim]Starting Ollama...[/dim]")
-        terminal_mode = config.ollama_startup_mode == "terminal_managed"
-
-        # Start Ollama server if not running
-        if not is_ollama_running(config.ollama_host):
-            success, err = start_ollama(
-                host=config.ollama_host,
-                terminal_mode=terminal_mode,
-            )
-            if not success:
-                console.print(f"[red]✗[/red] Could not start Ollama: {err}")
-                if not typer.confirm("Continue without LLM cleanup?", default=False):
-                    raise typer.Exit(1)
-                llm_enabled = False
-
-        if llm_enabled:
-            console.print("[green]✓[/green] Ollama is running")
-
-            # Ask if user wants cascade mode
-            if typer.confirm("Use cascade mode (multiple models for progressive refinement)?", default=len(saved_models) > 1):
-                picked = prompt_ollama_models(
-                    saved_models=saved_models,
-                    host=config.ollama_host,
-                    allow_skip=True,
-                    max_models=3,
-                )
-                if not picked:
-                    console.print("[dim]Skipping LLM processing.[/dim]")
-                    llm_enabled = False
-                else:
-                    selected_models = picked
-                    use_cascade = len(selected_models) > 1
-                    console.print(f"[dim]Preloading {selected_models[0]}...[/dim]")
-                    success, err = preload_model(selected_models[0], config.ollama_host)
-                    if not success:
-                        console.print(f"[yellow]⚠[/yellow] Could not preload model: {err}")
-                    if use_cascade:
-                        console.print(f"[green]✓[/green] Cascade mode: {' → '.join(selected_models)}")
-                    else:
-                        console.print(f"[green]✓[/green] Ready with model: {selected_models[0]}")
-            else:
-                # Single model selection
-                picked = prompt_ollama_models(
-                    saved_models=saved_models[:1],
-                    host=config.ollama_host,
-                    allow_skip=True,
-                    max_models=1,
-                )
-                if not picked:
-                    console.print("[dim]Skipping LLM processing.[/dim]")
-                    llm_enabled = False
-                else:
-                    selected_models = picked
-                    console.print(f"[dim]Preloading {selected_models[0]}...[/dim]")
-                    success, err = preload_model(selected_models[0], config.ollama_host)
-                    if not success:
-                        console.print(f"[yellow]⚠[/yellow] Could not preload model: {err}")
-                        if not typer.confirm("Continue without LLM cleanup?", default=False):
-                            raise typer.Exit(1)
-                        llm_enabled = False
-                    else:
-                        console.print(f"[green]✓[/green] Ready with model: {selected_models[0]}")
+    # Prepare Ollama
+    interactive = not use_config_paths
+    llm_enabled, selected_models, use_cascade = _prepare_llm(config, interactive=interactive)
 
     # Process each memo
     stats = {"created": 0, "skipped": 0, "failed": 0}
     conflict_mode = "overwrite" if force else config.conflict_resolution
 
     for memo_pair in memos:
-        try:
-            # Compute hash for change detection
-            source_hash = compute_source_hash(memo_pair.audio_path, memo_pair.composition_path)
-            source_mtime = datetime.fromtimestamp(memo_pair.audio_path.stat().st_mtime)
-
-            # Check if we should export
-            do_export, reason = should_export(
-                memo_pair.memo_id, source_hash, state, conflict_mode, source_mtime
-            )
-
-            if not do_export and not force:
-                console.print(f"  [dim]skip[/dim]  {memo_pair.memo_id} ({reason})")
-                stats["skipped"] += 1
-                continue
-
-            # Parse metadata
-            metadata = parse_memo(
-                memo_pair.audio_path,
-                memo_pair.composition_path,
-                memo_pair.memo_id,
-                config.transcript_source_priority,
-            )
-
-            # Whisper transcription if no native transcript and transcribe_missing is enabled
-            if not metadata.transcript and config.transcribe_missing:
-                try:
-                    from vmea.transcribe import transcribe_if_needed
-
-                    console.print(f"  [dim]transcribing[/dim] {memo_pair.memo_id}...")
-                    transcript_text, transcript_source = transcribe_if_needed(
-                        audio_path=memo_pair.audio_path,
-                        existing_transcript=metadata.transcript,
-                        model=config.whisper_model,
-                        language=config.whisper_language,
-                    )
-                    if transcript_text:
-                        metadata.transcript = transcript_text
-                        metadata.transcript_source = transcript_source
-                        console.print(f"  [green]✓[/green] Transcribed with Whisper ({transcript_source})")
-                except ImportError:
-                    console.print(
-                        f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
-                        "Whisper not installed. Install with: pip install 'vmea[transcribe]'"
-                    )
-                except Exception as exc:
-                    console.print(
-                        f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
-                        f"Whisper transcription failed ({exc})"
-                    )
-
-            # LLM processing: cleanup transcript, generate key takeaways, domains, and filename title
-            key_takeaways: list[str] | None = None
-            llm_model = ""
-            domains = ""
-            sub_domains = ""
-            llm_title = ""
-            if metadata.transcript and llm_enabled and selected_models:
-                try:
-                    # Use first model for auxiliary tasks, cascade for main cleanup
-                    primary_model = selected_models[0]
-                    llm_model = " → ".join(selected_models) if use_cascade else primary_model
-
-                    # Generate filename title first (needed for write_note)
-                    llm_title = generate_filename_title(
-                        transcript=metadata.transcript,
-                        model=primary_model,
-                        host=config.ollama_host,
-                        timeout=config.ollama_timeout,
-                    )
-
-                    # Clean up transcript (cascade or single model)
-                    if use_cascade:
-                        console.print(f"  [dim]cascade cleanup[/dim] {memo_pair.memo_id[:12]}...")
-                        cascade_result = cascade_cleanup_transcript(
-                            transcript=metadata.transcript,
-                            models=selected_models,
-                            host=config.ollama_host,
-                            timeout=config.ollama_timeout,
-                            instructions_path=config.cleanup_instructions_path,
-                            search_dir=output_folder,
-                            fail_on_missing_instruction=config.fail_on_missing_instruction_file,
-                        )
-                        metadata.revised_transcript = cascade_result.revised_transcript
-                    else:
-                        cleanup_result = cleanup_transcript(
-                            transcript=metadata.transcript,
-                            model=primary_model,
-                            host=config.ollama_host,
-                            timeout=config.ollama_timeout,
-                            instructions_path=config.cleanup_instructions_path,
-                            search_dir=output_folder,
-                            fail_on_missing_instruction=config.fail_on_missing_instruction_file,
-                        )
-                        metadata.revised_transcript = cleanup_result.revised_transcript
-
-                    # Generate key takeaways (using primary model)
-                    key_takeaways = generate_key_takeaways(
-                        transcript=metadata.transcript,
-                        model=primary_model,
-                        host=config.ollama_host,
-                        timeout=config.ollama_timeout,
-                    )
-
-                    # Generate domain categorization (using primary model)
-                    domain_result = generate_domains(
-                        transcript=metadata.transcript,
-                        model=primary_model,
-                        host=config.ollama_host,
-                        timeout=config.ollama_timeout,
-                    )
-                    domains = domain_result.domain
-                    sub_domains = domain_result.sub_domain
-                except Exception as exc:
-                    console.print(
-                        f"  [yellow]warn[/yellow] {memo_pair.memo_id}: "
-                        f"LLM processing failed ({exc})"
-                    )
-
-            # Write note and optionally copy audio
-            note_path, audio_path = write_note(
-                metadata=metadata,
-                output_folder=output_folder,
-                audio_source=memo_pair.audio_path,
-                key_takeaways=key_takeaways,
-                llm_model=llm_model,
-                domains=domains,
-                sub_domains=sub_domains,
-                date_format=config.filename_date_format,
-                dry_run=dry_run,
-                audio_export_mode=config.audio_export_mode,
-                llm_title=llm_title,
-            )
-
-            # Record in state
-            if not dry_run:
-                record_export(
-                    state=state,
-                    memo_id=memo_pair.memo_id,
-                    source_hash=source_hash,
-                    note_path=note_path,
-                    audio_path=audio_path,
-                    source_modified=metadata.modified,
-                    transcript_source=metadata.transcript_source,
-                )
-
-            console.print(f"  [green]create[/green] {note_path.name}")
-            stats["created"] += 1
-
-        except Exception as e:
-            console.print(f"  [red]fail[/red]  {memo_pair.memo_id}: {e}")
-            stats["failed"] += 1
+        result = export_memo(
+            memo_pair=memo_pair,
+            config=config,
+            output_folder=output_folder,
+            state=state,
+            conflict_mode=conflict_mode,
+            llm_enabled=llm_enabled,
+            selected_models=selected_models,
+            use_cascade=use_cascade,
+            dry_run=dry_run,
+            force=force,
+        )
+        stats[result] = stats.get(result, 0) + 1
 
     # Summary
-    console.print(f"\n[bold]Done:[/bold] {stats['created']} created, {stats['skipped']} skipped, {stats['failed']} failed")
+    console.print(f"\n[bold]Done:[/bold] {stats.get('created', 0)} created, {stats.get('skipped', 0)} skipped, {stats.get('failed', 0)} failed")
 
 
 @app.command()
@@ -761,6 +823,12 @@ def watch() -> None:
     console.print("[bold blue]VMEA Watch[/bold blue]")
     console.print(f"Watching: {source_path}")
     console.print("Press Ctrl+C to stop\n")
+
+    # Prepare LLM once (non-interactive)
+    llm_enabled, selected_models, use_cascade = _prepare_llm(config, interactive=False)
+    output_folder = config.output_folder.expanduser()
+    output_folder.mkdir(parents=True, exist_ok=True)
+    state_path = output_folder / config.state_file
 
     class MemoHandler(FileSystemEventHandler):
         def __init__(self) -> None:
@@ -783,23 +851,29 @@ def watch() -> None:
             ready = [p for p, t in self.pending.items() if now - t > self.debounce_seconds]
             for path in ready:
                 del self.pending[path]
-                memo_id = Path(path).stem
+                audio_path = Path(path)
+                memo_id = audio_path.stem
                 console.print(f"  [green]export[/green] {memo_id}")
-                # Trigger export for this memo
-                try:
-                    subprocess.run(
-                        [
-                            sys.executable,
-                            "-m",
-                            "vmea",
-                            "export",
-                            "--use-config-paths",
-                            "--memo-id",
-                            memo_id,
-                        ],
-                        check=True,
-                    )
-                except subprocess.CalledProcessError:
+                # Find the memo pair for this file
+                memo_pairs = [
+                    m for m in discover_memos(source_path)
+                    if m.memo_id == memo_id
+                ]
+                if not memo_pairs:
+                    console.print(f"  [red]not found[/red] {memo_id}")
+                    return
+                state = StateStore(path=state_path)
+                result = export_memo(
+                    memo_pair=memo_pairs[0],
+                    config=config,
+                    output_folder=output_folder,
+                    state=state,
+                    conflict_mode=config.conflict_resolution,
+                    llm_enabled=llm_enabled,
+                    selected_models=selected_models,
+                    use_cascade=use_cascade,
+                )
+                if result == "failed":
                     console.print(f"  [red]failed[/red] {memo_id}")
 
     handler = MemoHandler()
@@ -904,13 +978,38 @@ def retry_failed() -> None:
 
     console.print(f"[bold blue]Retrying {len(failed)} failed export(s)...[/bold blue]\n")
 
+    # Remove failed records from state
+    failed_ids = []
     for record in failed:
         console.print(f"  Retrying: {record.memo_id}")
-        # Remove from state and re-export
         state.remove(record.memo_id)
+        failed_ids.append(record.memo_id)
 
-    # Trigger export
-    subprocess.run([sys.executable, "-m", "vmea", "export", "--use-config-paths"])
+    # Find source and re-export failed memos directly
+    source_path = find_source_path(config.source_path_override)
+    if not source_path:
+        console.print("[red]\u2717[/red] Voice Memos folder not found.")
+        raise typer.Exit(1)
+
+    # Prepare LLM (non-interactive)
+    llm_enabled, selected_models, use_cascade = _prepare_llm(config, interactive=False)
+
+    memos = [m for m in discover_memos(source_path) if m.memo_id in failed_ids]
+    stats = {"created": 0, "skipped": 0, "failed": 0}
+    for memo_pair in memos:
+        result = export_memo(
+            memo_pair=memo_pair,
+            config=config,
+            output_folder=output_folder,
+            state=state,
+            conflict_mode=config.conflict_resolution,
+            llm_enabled=llm_enabled,
+            selected_models=selected_models,
+            use_cascade=use_cascade,
+        )
+        stats[result] = stats.get(result, 0) + 1
+
+    console.print(f"\n[bold]Retry done:[/bold] {stats.get('created', 0)} created, {stats.get('failed', 0)} failed")
 
 
 @app.command("list")
@@ -986,7 +1085,6 @@ def config() -> None:
     console.print(f"  audio_folder: {cfg.audio_output_folder or cfg.output_folder}")
     console.print(f"  audio_export_mode: {cfg.audio_export_mode}")
     console.print(f"  audio_fallback_to_source_link: {cfg.audio_fallback_to_source_link}")
-    console.print(f"  structure: {cfg.output_structure}")
     console.print("\n[bold]Source:[/bold]")
     if cfg.source_path_override:
         console.print(f"  path: {cfg.source_path_override} (override)")

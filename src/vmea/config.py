@@ -1,21 +1,13 @@
 """VMEA Configuration – Pydantic models and config loading."""
 
 import tomllib
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class OutputStructure(str, Enum):
-    """Output directory structure options."""
-
-    FLAT = "flat"
-    BY_YEAR = "by-year"
-    BY_MONTH = "by-month"
-
-
-class TranscriptSource(str, Enum):
+class TranscriptSource(StrEnum):
     """Transcript extraction priority."""
 
     PLIST = "plist"
@@ -23,7 +15,7 @@ class TranscriptSource(str, Enum):
     BOTH = "both"
 
 
-class ConflictResolution(str, Enum):
+class ConflictResolution(StrEnum):
     """How to handle existing notes."""
 
     SKIP = "skip"
@@ -31,7 +23,7 @@ class ConflictResolution(str, Enum):
     OVERWRITE = "overwrite"
 
 
-class AudioExportMode(str, Enum):
+class AudioExportMode(StrEnum):
     """How to reference audio in exported notes."""
 
     COPY = "copy"
@@ -40,33 +32,18 @@ class AudioExportMode(str, Enum):
     APP_LINK = "app-link"  # Link to open Voice Memos app
 
 
-class LogLevel(str, Enum):
-    """Logging levels."""
-
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-
-
 class VMEAConfig(BaseModel):
     """Main VMEA configuration."""
 
     # Output settings
     output_folder: Path = Field(default=Path("~/Documents/Obsidian/Voice Memos"))
     audio_output_folder: Path | None = None
-    output_structure: OutputStructure = OutputStructure.FLAT
     audio_export_mode: AudioExportMode = AudioExportMode.APP_LINK  # Default to app-link (no file copy)
     audio_fallback_to_source_link: bool = False
 
     # Metadata & frontmatter
     default_domain: str = ""
-    default_subdomain: str = ""
-    additional_tags: list[str] = Field(default_factory=lambda: ["voice-memo"])
-    default_alias_mode: str = "title"  # "title" or "none"
     filename_date_format: str = "%Y-%m-%d"
-    slug_separator: str = "-"
-    max_filename_length: int = 100
 
     # Source detection
     source_path_override: Path | None = None
@@ -96,28 +73,14 @@ class VMEAConfig(BaseModel):
     state_file: str = ".vmea-state.jsonl"
 
     # Background processing
-    watch_enabled: bool = True
     watch_debounce_seconds: int = 5
-    stability_check_count: int = 3
-    stability_check_interval: int = 2
-    reconcile_interval_minutes: int = 60
-
-    # Logging
-    log_level: LogLevel = LogLevel.INFO
-    log_file: Path | None = Path("~/.local/share/vmea/vmea.log")
-    log_max_size_mb: int = 10
-    log_backup_count: int = 3
 
     # Advanced
     dry_run: bool = False
-    workers: int = 0
-    skip_before_date: str | None = None
-    min_duration_seconds: int = 0
 
     @field_validator(
         "output_folder",
         "audio_output_folder",
-        "log_file",
         "source_path_override",
         "cleanup_instructions_path",
         mode="before",
@@ -161,6 +124,8 @@ def migrate_legacy_config(path: Path) -> None:
     content = content.replace('"OutputStructure.FLAT"', '"flat"')
     content = content.replace('"OutputStructure.BY_YEAR"', '"by-year"')
     content = content.replace('"OutputStructure.BY_MONTH"', '"by-month"')
+    # Legacy LogLevel and OutputStructure enums (removed from config)
+    # Still migrate them so old config files don't break on unknown keys
     content = content.replace('"LogLevel.DEBUG"', '"DEBUG"')
     content = content.replace('"LogLevel.INFO"', '"INFO"')
     content = content.replace('"LogLevel.WARNING"', '"WARNING"')

@@ -31,7 +31,6 @@ dependencies = [
     "typer>=0.12.0",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
-    "tomli>=2.0.0;python_version<'3.11'",
     "tomli-w>=1.0.0",
     "watchdog>=4.0.0",
     "mutagen>=1.47.0",
@@ -56,9 +55,9 @@ dev = [
 vmea = "vmea.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/klappe-pm/vmea"
-Repository = "https://github.com/klappe-pm/vmea"
-Issues = "https://github.com/klappe-pm/vmea/issues"
+Homepage = "https://github.com/klappe-pm/Apple-Voice-Memo-Export-to-Markdown"
+Repository = "https://github.com/klappe-pm/Apple-Voice-Memo-Export-to-Markdown"
+Issues = "https://github.com/klappe-pm/Apple-Voice-Memo-Export-to-Markdown/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vmea"]
