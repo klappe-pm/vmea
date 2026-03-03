@@ -24,10 +24,17 @@ Export Apple Voice Memos to markdown notes with AI-powered transcription and org
 - 🎙️ **Automatic Export** – Convert Voice Memos to markdown with YAML frontmatter
 - 🤖 **Whisper Transcription** – Generate transcripts for older memos without native transcription
 - ✨ **LLM Enhancement** – Clean up transcripts, generate titles, key takeaways, and categorization
+- 🔄 **Cascade Mode** – Run multiple LLM models sequentially for progressive refinement
+- 📝 **Customizable Instructions** – Edit LLM prompts without modifying code
 - 📁 **Smart Naming** – Auto-generated filenames: `YYYY-MM-DD-XX-descriptive-title.md`
 - 🔗 **Flexible Audio** – Copy files, symlink, or link directly to Voice Memos app
 - 👀 **Watch Mode** – Automatically export new memos as they're recorded
 - 🔄 **Idempotent** – Re-run safely without creating duplicates
+
+## Documentation
+
+- 📖 **[Getting Started Guide](docs/GETTING_STARTED.md)** – Complete setup walkthrough
+- ⚙️ **[Customizing LLM Instructions](docs/CUSTOMIZING_LLM_INSTRUCTIONS.md)** – Tailor transcript cleanup
 
 ## Installation
 
@@ -176,9 +183,28 @@ whisper_model = "base"  # tiny, base, small, medium, large
 
 # LLM cleanup via Ollama
 llm_cleanup_enabled = true
-ollama_model = "llama3.2:3b"
+ollama_model = "llama3.2:3b"              # Single model (default)
+ollama_models = []                         # Cascade mode: ["model1", "model2", "model3"]
 ollama_host = "http://localhost:11434"
+cleanup_instructions_path = ""             # Custom instructions file (optional)
 ```
+
+### Cascade Mode
+
+Run multiple models sequentially for progressive refinement:
+
+```toml
+# Example cascade configuration
+ollama_models = ["llama3.2:3b", "llama3.1:8b", "mistral:7b"]
+```
+
+| Stage | Purpose |
+|-------|--------|
+| Model 1 | Initial cleanup – punctuation, filler words |
+| Model 2 | Revision – clarity, flow, structure |
+| Model 3 | Polish – professional quality, consistency |
+
+See [Cascade Mode documentation](docs/GETTING_STARTED.md#cascade-mode) for details.
 
 ### Audio Export Modes
 
@@ -224,12 +250,27 @@ When `llm_cleanup_enabled = true`, Ollama performs:
 - ✅ Improve paragraph breaks
 - ✅ Correct obvious transcription errors
 - ✅ Apply consistent formatting
+- ✅ Add Obsidian backlinks to key terms (customizable)
 
 ### What LLM cleanup does NOT do:
 - ❌ Summarize or shorten content
 - ❌ Add information not present
 - ❌ Interpret or editorialize
 - ❌ Change the speaker's meaning
+
+### Customizing LLM Behavior
+
+Edit the instruction file to customize how transcripts are processed:
+
+```bash
+# Copy default instructions
+cp src/vmea/prompts/cleanup_instructions.md ~/.config/vmea/
+
+# Edit and set path in config.toml
+cleanup_instructions_path = "~/.config/vmea/cleanup_instructions.md"
+```
+
+See [Customizing LLM Instructions](docs/CUSTOMIZING_LLM_INSTRUCTIONS.md) for details.
 
 ## Development
 
@@ -263,10 +304,16 @@ src/vmea/
 ├── discovery.py      # Find Voice Memos folder
 ├── parser.py         # Extract metadata & transcripts
 ├── transcribe.py     # Whisper integration
-├── cleanup.py        # Ollama LLM processing
+├── cleanup.py        # Ollama LLM processing (single & cascade)
 ├── writer.py         # Generate markdown notes
 ├── state.py          # JSONL state tracking
-└── ollama.py         # Ollama server management
+├── ollama.py         # Ollama server management
+└── prompts/          # LLM instruction templates
+    └── cleanup_instructions.md  # Default cleanup instructions
+
+docs/
+├── GETTING_STARTED.md           # Complete setup guide
+└── CUSTOMIZING_LLM_INSTRUCTIONS.md  # LLM customization guide
 ```
 
 ## Troubleshooting
