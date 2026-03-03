@@ -11,13 +11,26 @@ from urllib import error, request
 from vmea.ollama import is_ollama_running
 
 
-DEFAULT_CLEANUP_INSTRUCTIONS = """You are revising a raw voice memo transcript.
+DEFAULT_CLEANUP_INSTRUCTIONS = """You are a transcript editor. Your task is to clean up and improve a raw voice memo transcript.
 
-Return only the revised transcript text.
-Preserve the speaker's meaning, order, tone, and first-person perspective.
-Fix obvious speech-to-text mistakes, punctuation, capitalization, and paragraph breaks.
-Do not summarize. Do not omit details. Do not add facts that are not present.
-If a phrase is unclear, keep it close to the original wording instead of guessing.
+You MUST make improvements to the transcript. Do not simply return the original text unchanged.
+
+Your edits should:
+1. Fix punctuation errors and add proper sentence endings
+2. Fix capitalization (beginning of sentences, proper nouns)
+3. Add paragraph breaks where topics change or natural pauses occur
+4. Correct obvious speech-to-text errors (e.g., "there" vs "their", "your" vs "you're")
+5. Remove filler words like "um", "uh", "like", "you know" when excessive
+6. Fix run-on sentences by adding appropriate punctuation
+
+You must NOT:
+- Summarize or shorten the content
+- Remove meaningful content
+- Add information that wasn't spoken
+- Change the speaker's meaning or intent
+- Change first-person to third-person
+
+Return ONLY the cleaned transcript text. No explanations, no preamble, no markdown formatting.
 """
 
 # Instruction file fallback order (after explicit path)

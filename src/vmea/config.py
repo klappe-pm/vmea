@@ -62,7 +62,7 @@ class VMEAConfig(BaseModel):
     output_folder: Path = Field(default=Path("~/Documents/Obsidian/Voice Memos"))
     audio_output_folder: Optional[Path] = None
     output_structure: OutputStructure = OutputStructure.FLAT
-    audio_export_mode: AudioExportMode = AudioExportMode.COPY
+    audio_export_mode: AudioExportMode = AudioExportMode.APP_LINK  # Default to app-link (no file copy)
     audio_fallback_to_source_link: bool = False
 
     # Metadata & frontmatter

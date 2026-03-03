@@ -27,7 +27,7 @@ class FakeResponse:
 def test_resolve_instruction_file_uses_default_when_path_missing(tmp_path: Path) -> None:
     # Use tmp_path as search_dir to avoid picking up project's README.md
     content, source = resolve_instruction_file(None, search_dir=tmp_path)
-    assert "Return only the revised transcript text." in content
+    assert "You are a transcript editor" in content
     assert source == "default"
 
 

@@ -199,7 +199,7 @@ def write_note(
     sub_domains: str = "",
     date_format: str = "%Y-%m-%d",
     dry_run: bool = False,
-    audio_export_mode: str = "copy",
+    audio_export_mode: str = "app-link",
     llm_title: str = "",
 ) -> tuple[Path, Optional[Path]]:
     """Write a Markdown note and optionally copy the audio file.
