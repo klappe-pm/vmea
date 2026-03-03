@@ -351,59 +351,32 @@ nano ~/.config/vmea/cleanup_instructions.md
 
 ## Troubleshooting
 
+For quick fixes to the most common issues, see below. For a comprehensive guide, see [Troubleshooting](TROUBLESHOOTING.md).
+
 ### "Voice Memos folder not found"
 
 1. **Open Voice Memos app** to trigger iCloud sync
 2. **Grant Full Disk Access** (see [Prerequisites](#prerequisites))
 3. Run `vmea doctor` to see which paths are checked
 
-### "No transcript available"
-
-For older memos without native transcription:
-```bash
-pip install -e ".[transcribe]"
-```
-Then set `transcribe_missing = true` in config.
-
 ### "Ollama not running"
 
 ```bash
-# Start Ollama
 vmea ollama start
-
-# Or manually
-ollama serve
-```
-
-### "Model not found"
-
-```bash
-# List available models
-vmea ollama models
-
-# Pull a model
-vmea ollama pull llama3.2:3b
-```
-
-### Resetting State
-
-If you need to re-export everything:
-
-```bash
-# Delete the state file
-rm ~/path/to/output/.vmea-state.jsonl
-
-# Re-export
-vmea export
+# or: ollama serve
 ```
 
 ---
 
 ## Next Steps
 
-- [Customizing LLM Instructions](CUSTOMIZING_LLM_INSTRUCTIONS.md) – Tailor transcript cleanup to your needs
-- [Command Reference](../README.md#commands-reference) – Full list of commands
-- [Configuration Options](../README.md#configuration) – All config settings
+- [Commands Reference](COMMANDS.md) -- Full list of CLI commands and flags
+- [Configuration](CONFIGURATION.md) -- All config options explained
+- [Use Cases & LLM Processing](USE_CASES.md) -- Transcription sources, LLM pipeline, workflows
+- [Customizing LLM Instructions](CUSTOMIZING_LLM_INSTRUCTIONS.md) -- Tailor transcript cleanup to your needs
+- [Troubleshooting](TROUBLESHOOTING.md) -- Common errors and fixes
+- [Development](DEVELOPMENT.md) -- Contributing and project structure
+- [Architecture Diagrams](diagrams/README.md) -- Visual system diagrams
 
 ---
 

@@ -35,27 +35,27 @@ Automatically exports Apple Voice Memos to well-organized markdown files with tr
 
 ## Installation
 ```bash
+# Install
 git clone https://github.com/klappe-pm/Apple-Voice-Memo-Export-to-Markdown.git
 cd Apple-Voice-Memo-Export-to-Markdown
 pip install -e .
-```
 
 ## Optional Dependencies
 ```bash
 # For Whisper transcription (older memos without native transcripts)
 pip install -e ".[transcribe]"
 
-# For LLM features (requires Ollama installed separately)
-pip install -e ".[llm]"
+# Export all memos
+vmea export
 
-# For development
-pip install -e ".[dev]"
+# Check system health
+vmea doctor
 ```
 
 ## Requirements
 - **macOS 13+** (Ventura or later)
 - **Python 3.11+**
-- **Full Disk Access** permission (System Settings → Privacy & Security)
+- **Full Disk Access** permission (System Settings > Privacy & Security)
 - **Ollama** (optional, for LLM features)
 
 ## Quick Start
@@ -71,12 +71,7 @@ vmea doctor
 ## Output Format
 ### Filename Convention
 ```
-YYYY-MM-DD-XX-descriptive-title.md
-│    │  │  │   └── LLM-generated title slug
-│    │  │  └────── Daily sequence (00, 01, 02...)
-│    │  └───────── Day
-│    └──────────── Month
-└───────────────── Year
+2024-03-15-00-project-kickoff-meeting.md
 ```
 
 **Examples:**
