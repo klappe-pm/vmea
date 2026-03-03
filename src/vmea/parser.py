@@ -55,15 +55,99 @@ def extract_transcript_from_plist(plist_data: dict[str, Any]) -> Optional[str]:
     Returns:
         Transcript string, or None if not present.
     """
-    # TODO: Implement actual extraction logic based on real plist structure
-    # The structure varies between macOS versions
-    return plist_data.get("transcript")
+    def normalize(text: str) -> Optional[str]:
+        cleaned = text.strip()
+        return cleaned or None
+
+    def from_runs(value: Any) -> Optional[str]:
+        if isinstance(value, dict):
+            value = value.get("runs")
+        if not isinstance(value, list):
+            return None
+
+        parts = [item for item in value if isinstance(item, str)]
+        if not parts:
+            return None
+        return normalize("".join(parts))
+
+    def from_segments(value: Any) -> Optional[str]:
+        if not isinstance(value, list):
+            return None
+
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+
+            for key in ("text", "string", "content", "utterance", "displayText"):
+                segment_text = item.get(key)
+                if isinstance(segment_text, str) and segment_text.strip():
+                    parts.append(segment_text.strip())
+                    break
+
+        if not parts:
+            return None
+        return normalize(" ".join(parts))
+
+    def extract(value: Any) -> Optional[str]:
+        if isinstance(value, str):
+            return normalize(value)
+
+        candidate = from_runs(value)
+        if candidate:
+            return candidate
+
+        if isinstance(value, dict):
+            for key in ("text", "string", "content"):
+                nested_text = value.get(key)
+                if isinstance(nested_text, str):
+                    candidate = normalize(nested_text)
+                    if candidate:
+                        return candidate
+
+            for key in ("attributedString", "attributedText"):
+                if key in value:
+                    candidate = from_runs(value[key])
+                    if candidate:
+                        return candidate
+
+            for key in ("segments", "utterances", "phrases"):
+                if key in value:
+                    candidate = from_segments(value[key])
+                    if candidate:
+                        return candidate
+
+            for key, nested in value.items():
+                lowered = key.lower()
+                if any(token in lowered for token in ("transcript", "speech", "dictation", "caption")):
+                    candidate = extract(nested)
+                    if candidate:
+                        return candidate
+            return None
+
+        if isinstance(value, list):
+            candidate = from_segments(value)
+            if candidate:
+                return candidate
+            for item in value:
+                candidate = extract(item)
+                if candidate:
+                    return candidate
+
+        return None
+
+    return extract(plist_data)
 
 
 def extract_tsrp_atom(audio_path: Path) -> Optional[str]:
     """Extract transcript from tsrp atom embedded in .m4a file.
 
     iOS 18+ / macOS 15+ embeds transcripts as JSON in a custom atom.
+    The JSON format is:
+    {"locale":{...}, "attributedString":{"runs":["word",0," word",1,...]}}
 
     Args:
         audio_path: Path to .m4a file.
@@ -71,10 +155,56 @@ def extract_tsrp_atom(audio_path: Path) -> Optional[str]:
     Returns:
         Transcript string, or None if not present.
     """
-    # TODO: Implement tsrp atom extraction
-    # This requires reading the m4a file and parsing the atom structure
-    # to find the custom tsrp atom containing JSON transcript data
-    return None
+    import json
+    import struct
+
+    try:
+        with open(audio_path, "rb") as f:
+            data = f.read()
+
+        # Search for 'tsrp' atom marker
+        tsrp_pos = data.find(b"tsrp")
+        if tsrp_pos < 4:
+            return None
+
+        # Get atom size from 4 bytes before the marker
+        atom_size = struct.unpack(">I", data[tsrp_pos - 4 : tsrp_pos])[0]
+        if atom_size < 8:
+            return None
+
+        # Extract JSON content (skip the 4-byte atom type)
+        json_start = tsrp_pos + 4
+        json_end = tsrp_pos - 4 + atom_size
+        json_bytes = data[json_start:json_end]
+
+        # Parse JSON
+        tsrp_data = json.loads(json_bytes.decode("utf-8"))
+
+        # Extract transcript from attributedString.runs
+        # Format varies:
+        #   {"attributedString": {"runs": ["word", 0, " word", 1, ...]}}
+        #   {"attributedString": ["word", 0, " word", 1, ...]}
+        attributed_string = tsrp_data.get("attributedString", {})
+
+        # Handle both dict and list formats
+        if isinstance(attributed_string, dict):
+            runs = attributed_string.get("runs", [])
+        elif isinstance(attributed_string, list):
+            runs = attributed_string
+        else:
+            return None
+
+        if not runs:
+            return None
+
+        # Concatenate only the string elements (skip numeric indices)
+        transcript_parts = [item for item in runs if isinstance(item, str)]
+        transcript = "".join(transcript_parts).strip()
+
+        return transcript if transcript else None
+
+    except (OSError, json.JSONDecodeError, struct.error, UnicodeDecodeError, KeyError, AttributeError):
+        return None
 
 
 # Regex pattern for Voice Memo filename: "YYYYMMDD HHMMSS-UUID"
@@ -128,13 +258,16 @@ def extract_duration_from_m4a(audio_path: Path) -> Optional[float]:
 def generate_title_from_date(dt: datetime) -> str:
     """Generate a human-readable title from a datetime.
 
+    Includes seconds to avoid filename collisions between memos
+    recorded in the same minute.
+
     Args:
         dt: Recording datetime.
 
     Returns:
-        Formatted title like "Voice Memo - Aug 9, 2025 8:27 PM"
+        Formatted title like "Voice Memo - Aug 9, 2025 8:27:43 PM"
     """
-    return dt.strftime("Voice Memo - %b %-d, %Y %-I:%M %p")
+    return dt.strftime("Voice Memo - %b %-d, %Y %-I:%M:%S %p")
 
 
 def parse_memo(

@@ -102,6 +102,9 @@ class StateStore:
 def compute_source_hash(audio_path: Path, composition_path: Optional[Path]) -> str:
     """Compute a hash of the source files for change detection.
 
+    Includes file content, size, and modification time to catch all changes,
+    including appended audio content.
+
     Args:
         audio_path: Path to .m4a file.
         composition_path: Path to .composition folder (may be None).
@@ -111,15 +114,21 @@ def compute_source_hash(audio_path: Path, composition_path: Optional[Path]) -> s
     """
     hasher = hashlib.sha256()
 
-    # Hash audio file
+    # Hash audio file content, size, and mtime
     if audio_path.exists():
+        stat = audio_path.stat()
+        # Include size and mtime in hash for faster change detection
+        hasher.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode())
         hasher.update(audio_path.read_bytes())
 
-    # Hash plist if present
-    if composition_path:
-        manifest = composition_path / "manifest.plist"
-        if manifest.exists():
-            hasher.update(manifest.read_bytes())
+    # Hash composition folder contents if present
+    if composition_path and composition_path.exists():
+        # Hash all files in the composition folder (manifest.plist, segments, etc.)
+        for file in sorted(composition_path.iterdir()):
+            if file.is_file():
+                stat = file.stat()
+                hasher.update(f"{file.name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
+                hasher.update(file.read_bytes())
 
     return hasher.hexdigest()[:16]  # Truncate for readability
 
@@ -129,6 +138,7 @@ def should_export(
     source_hash: str,
     state: StateStore,
     conflict_resolution: str = "update",
+    source_modified: Optional[datetime] = None,
 ) -> tuple[bool, str]:
     """Determine if a memo should be exported.
 
@@ -137,6 +147,7 @@ def should_export(
         source_hash: Current source hash.
         state: State store instance.
         conflict_resolution: "skip", "update", or "overwrite".
+        source_modified: Current source modification time (optional backup check).
 
     Returns:
         Tuple of (should_export, reason).
@@ -146,15 +157,30 @@ def should_export(
     if existing is None:
         return True, "new"
 
+    # Check if output files still exist on disk - re-export if deleted
+    note_exists = Path(existing.note_path).exists() if existing.note_path else False
+    audio_exists = Path(existing.audio_path).exists() if existing.audio_path else False
+    if not note_exists or not audio_exists:
+        return True, "missing_output"
+
     if conflict_resolution == "skip":
         return False, "skip_existing"
 
     if conflict_resolution == "overwrite":
         return True, "overwrite"
 
-    # "update" mode - only if source changed
+    # "update" mode - check if source changed via hash
     if existing.source_hash != source_hash:
         return True, "source_changed"
+
+    # Backup check: also compare modification times if available
+    if source_modified and existing.source_modified:
+        try:
+            existing_mtime = datetime.fromisoformat(existing.source_modified)
+            if source_modified > existing_mtime:
+                return True, "source_modified"
+        except (ValueError, TypeError):
+            pass  # Ignore parsing errors, rely on hash
 
     return False, "unchanged"
 

@@ -184,9 +184,12 @@ def export(
             # Compute hash for change detection
             source_hash = compute_source_hash(memo_pair.audio_path, memo_pair.composition_path)
 
+            # Get source file modification time for backup change detection
+            source_mtime = datetime.fromtimestamp(memo_pair.audio_path.stat().st_mtime)
+
             # Check if we should export
             do_export, reason = should_export(
-                memo_pair.memo_id, source_hash, state, conflict_mode
+                memo_pair.memo_id, source_hash, state, conflict_mode, source_mtime
             )
 
             if not do_export and not force:

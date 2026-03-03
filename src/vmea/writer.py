@@ -232,34 +232,37 @@ def write_note(
     """
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Generate filenames
+    # Generate filenames with collision detection
     note_filename = generate_filename(metadata, date_format=date_format)
-    audio_filename = note_filename.replace(".md", ".m4a")
-
     note_path = output_folder / note_filename
+
+    # If file exists and belongs to a different memo, append short ID to disambiguate
+    if note_path.exists() and not dry_run:
+        existing_content = note_path.read_text(encoding="utf-8")
+        if f'memo_id: "{metadata.memo_id}"' not in existing_content:
+            short_id = metadata.memo_id.split("-")[-1][:6].lower() if "-" in metadata.memo_id else metadata.memo_id[-6:]
+            base = note_filename.removesuffix(".md")
+            note_filename = f"{base}-{short_id}.md"
+            note_path = output_folder / note_filename
+
+    audio_filename = note_filename.replace(".md", ".m4a")
     audio_path = output_folder / audio_filename
 
     if dry_run:
         return note_path, audio_path
 
-    # Generate note content
+    # Stage both files first so we never publish a note that links to missing audio.
     content = generate_note_content(metadata, audio_filename, domain, additional_tags)
-
-    # Atomic write for note
     temp_note = note_path.with_suffix(".md.tmp")
+    temp_audio = audio_path.with_suffix(".m4a.tmp")
+
     try:
         temp_note.write_text(content, encoding="utf-8")
+        shutil.copy2(audio_source, temp_audio)
+        temp_audio.replace(audio_path)
         temp_note.replace(note_path)
     except Exception:
         temp_note.unlink(missing_ok=True)
-        raise
-
-    # Copy audio file (preserve metadata)
-    temp_audio = audio_path.with_suffix(".m4a.tmp")
-    try:
-        shutil.copy2(audio_source, temp_audio)
-        temp_audio.replace(audio_path)
-    except Exception:
         temp_audio.unlink(missing_ok=True)
         raise
 

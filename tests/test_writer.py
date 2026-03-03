@@ -10,7 +10,9 @@ from vmea.writer import (
     format_duration,
     generate_filename,
     generate_frontmatter,
+    generate_note_content,
     sanitize_filename,
+    write_note,
 )
 
 
@@ -114,3 +116,80 @@ class TestGenerateFrontmatter:
         result = generate_frontmatter(metadata, "test.m4a")
 
         assert r'title: "Title with \"quotes\""' in result
+
+
+class TestGenerateNoteContent:
+    """Tests for generate_note_content function."""
+
+    def test_note_content_includes_markdown_body_without_transcript(self) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            title="Test Recording",
+            created=datetime(2024, 3, 15, 10, 30),
+            duration_seconds=120.5,
+        )
+
+        result = generate_note_content(metadata, "test.m4a")
+
+        assert result.startswith("---\n")
+        assert "\n# Test Recording\n" in result
+        assert "\n## Metadata\n" in result
+        assert "[[test.m4a]]" in result
+        assert "## Transcript" not in result
+
+
+class TestWriteNote:
+    """Tests for write_note function."""
+
+    def test_write_note_creates_markdown_and_audio(self, output_dir: Path, temp_dir: Path) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            title="Test Recording",
+            created=datetime(2024, 3, 15, 10, 30),
+            duration_seconds=120.5,
+            transcript="Hello world",
+            transcript_source="plist",
+        )
+        audio_source = temp_dir / "source.m4a"
+        audio_source.write_bytes(b"fake audio")
+
+        note_path, audio_path = write_note(metadata, output_dir, audio_source)
+
+        assert note_path.exists()
+        assert audio_path.exists()
+        assert audio_path.read_bytes() == b"fake audio"
+
+        content = note_path.read_text(encoding="utf-8")
+        assert "# Test Recording" in content
+        assert "## Transcript" in content
+        assert "[[2024-03-15-test-recording.m4a]]" in content
+
+    def test_write_note_cleans_up_when_audio_copy_fails(
+        self,
+        output_dir: Path,
+        temp_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            title="Test Recording",
+            created=datetime(2024, 3, 15, 10, 30),
+        )
+        audio_source = temp_dir / "source.m4a"
+        audio_source.write_bytes(b"fake audio")
+
+        note_path = output_dir / generate_filename(metadata)
+        audio_path = output_dir / note_path.name.replace(".md", ".m4a")
+
+        def fail_copy(_src: Path, _dst: Path) -> None:
+            raise OSError("copy failed")
+
+        monkeypatch.setattr("vmea.writer.shutil.copy2", fail_copy)
+
+        with pytest.raises(OSError, match="copy failed"):
+            write_note(metadata, output_dir, audio_source)
+
+        assert not note_path.exists()
+        assert not audio_path.exists()
+        assert not note_path.with_suffix(".md.tmp").exists()
+        assert not audio_path.with_suffix(".m4a.tmp").exists()
