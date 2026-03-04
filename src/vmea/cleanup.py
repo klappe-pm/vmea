@@ -387,6 +387,42 @@ def generate_domains(
     return DomainResult(domain=domain, sub_domain=sub_domain)
 
 
+SUMMARY_PROMPT = """You are summarizing a voice memo transcript.
+
+Write a concise summary (2-4 sentences) that captures the main topic, key points, and any action items or conclusions from this voice memo.
+
+Rules:
+- Be concise but informative
+- Use complete sentences
+- Focus on the most important content
+- Do not use bullet points or numbered lists
+- Do not include any preamble like "This voice memo is about..."
+
+Return ONLY the summary text, nothing else.
+"""
+
+
+def generate_summary(
+    transcript: str,
+    model: str,
+    host: str = "http://localhost:11434",
+    timeout: int = 60,
+) -> str:
+    """Generate a brief summary of a transcript using LLM.
+
+    Args:
+        transcript: The transcript text to summarize.
+        model: Ollama model name.
+        host: Ollama server URL.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        A concise summary string.
+    """
+    response = _call_ollama(transcript, SUMMARY_PROMPT, model, host, timeout)
+    return response.strip() if response else ""
+
+
 FILENAME_TITLE_PROMPT = """You are generating a short filename-safe title for a voice memo.
 
 Analyze the transcript and create a concise, descriptive title (2-5 words).

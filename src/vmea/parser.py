@@ -20,7 +20,10 @@ class MemoMetadata:
     modified: datetime | None = None
     duration_seconds: float | None = None
     transcript: str | None = None
-    revised_transcript: str | None = None
+    native_transcript: str | None = None  # Original iOS transcript (plist/tsrp)
+    whisper_transcript: str | None = None  # Whisper transcription
+    revised_transcript: str | None = None  # Cascade LLM output
+    summary: str | None = None  # LLM-generated summary
     transcript_source: str | None = None  # "plist", "tsrp", or "native"
     custom_label: str | None = None
     is_favorited: bool = False
@@ -332,6 +335,7 @@ def parse_memo(
             source = "plist"
 
     metadata.transcript = transcript
+    metadata.native_transcript = transcript  # Preserve original before Whisper overwrites
     metadata.transcript_source = source
 
     # Fallback 1: Parse date from filename (most reliable for synced files)

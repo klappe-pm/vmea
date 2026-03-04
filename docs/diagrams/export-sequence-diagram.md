@@ -62,6 +62,8 @@ sequenceDiagram
                     Ollama-->>ExportMemo: 5 takeaways
                     ExportMemo->>Ollama: generate_domains()
                     Ollama-->>ExportMemo: DomainResult(domain, sub_domain)
+                    ExportMemo->>Ollama: generate_summary()
+                    Ollama-->>ExportMemo: summary text
                 end
             end
             

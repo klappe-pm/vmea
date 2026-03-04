@@ -34,13 +34,14 @@ flowchart TD
     CASCADE_CLEANUP --> TAKEAWAYS
     SINGLE_CLEANUP --> TAKEAWAYS
     TAKEAWAYS["📝 generate_key_takeaways()"] --> DOMAINS["🗂️ generate_domains()"]
-    DOMAINS --> WRITE
+    DOMAINS --> SUMMARIZE["📋 generate_summary()"]
+    SUMMARIZE --> WRITE
     
     LLM_CHECK -->|No| WRITE["💾 write_note()"]
     
     WRITE --> AUDIO_MODE{"audio_export_mode?"}
     AUDIO_MODE -->|copy| COPY["📁 Copy Audio"]
-    AUDIO_MODE -->|app-link| LINK["🔗 file:// Link"]
+    AUDIO_MODE -->|app-link| LINK["🔗 Shortcuts Link"]
     AUDIO_MODE -->|symlink| SYM["↗️ Symlink"]
     
     COPY --> RECORD
@@ -59,6 +60,7 @@ flowchart TD
     style SINGLE_CLEANUP fill:#8b5cf6,color:#fff,stroke:#7c3aed
     style TAKEAWAYS fill:#8b5cf6,color:#fff,stroke:#7c3aed
     style DOMAINS fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style SUMMARIZE fill:#8b5cf6,color:#fff,stroke:#7c3aed
     style WRITE fill:#10b981,color:#fff,stroke:#059669
     style RECORD fill:#64748b,color:#fff,stroke:#475569
     style SKIP fill:#94a3b8,color:#fff

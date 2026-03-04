@@ -11,18 +11,20 @@ Automatically exports Apple Voice Memos to well-organized markdown files with tr
 
 ### How this project works
 1. **Discovers** Voice Memos from iCloud sync folder
-2. **Extracts** native iOS transcripts (or generates them with Whisper for older memos)
-3. **Enhances** content using local LLM (Ollama) – cleans transcripts, generates titles & summaries
-4. **Writes** markdown notes with YAML frontmatter and consistent naming: `YYYY-MM-DD-XX-title.md`
-5. **Tracks** state to enable incremental updates without duplicates
+2. **Extracts** native iOS transcripts (preserved as "Original Transcript")
+3. **Transcribes** audio with Whisper (preserved as "Whisper Transcript")
+4. **Enhances** content using local LLM cascade (Ollama) – cleans transcripts, generates titles, summaries & key takeaways
+5. **Writes** markdown notes with three transcript tiers, summary, YAML frontmatter: `YYYY-MM-DD-XX-title.md`
+6. **Tracks** state to enable incremental updates without duplicates
 
 
 
 ## Features
 - 🎙️ **Automatic Export** – Convert Voice Memos to markdown with YAML frontmatter
 - 🤖 **Whisper Transcription** – Generate transcripts for older memos without native transcription
-- ✨ **LLM Enhancement** – Clean up transcripts, generate titles, key takeaways, and categorization
+- ✨ **LLM Enhancement** – Clean up transcripts, generate titles, key takeaways, summaries, and categorization
 - 🔄 **Cascade Mode** – Run multiple LLM models sequentially for progressive refinement
+- 📊 **Three-Tier Transcripts** – Cascade (LLM), Whisper, and Original (iOS) transcripts preserved separately
 - 📝 **Customizable Instructions** – Edit LLM prompts without modifying code
 - 📁 **Smart Naming** – Auto-generated filenames: `YYYY-MM-DD-XX-descriptive-title.md`
 - 🔗 **Flexible Audio** – Copy files, symlink, or link directly to Voice Memos app
@@ -178,9 +180,10 @@ VMEA extracts transcripts from multiple sources:
 When `llm_cleanup_enabled = true`, Ollama performs:
 
 1. **Filename Title Generation** – Creates descriptive slug for filename
-2. **Transcript Cleanup** – Fixes punctuation, paragraphs, artifacts
+2. **Transcript Cleanup** – Fixes punctuation, paragraphs, artifacts (cascade mode)
 3. **Key Takeaways** – Extracts 5 main points
 4. **Domain Categorization** – Assigns domain and sub-domain
+5. **Summary Generation** – Creates a 2-4 sentence summary placed under the note title
 
 ### What LLM cleanup does:
 - ✅ Fix punctuation and capitalization

@@ -41,7 +41,7 @@ def test_is_ollama_installed_false(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_is_ollama_running_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(_req, _timeout):  # type: ignore[no-untyped-def]
+    def fake_urlopen(_req, **kwargs):  # type: ignore[no-untyped-def]
         return FakeResponse({"models": []})
 
     monkeypatch.setattr("vmea.ollama.request.urlopen", fake_urlopen)
@@ -49,7 +49,7 @@ def test_is_ollama_running_true(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_is_ollama_running_false_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(_req, _timeout):  # type: ignore[no-untyped-def]
+    def fake_urlopen(_req, **kwargs):  # type: ignore[no-untyped-def]
         raise ConnectionRefusedError("Connection refused")
 
     monkeypatch.setattr("vmea.ollama.request.urlopen", fake_urlopen)
@@ -57,7 +57,7 @@ def test_is_ollama_running_false_on_error(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_list_models_returns_model_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(_req, _timeout):  # type: ignore[no-untyped-def]
+    def fake_urlopen(_req, **kwargs):  # type: ignore[no-untyped-def]
         return FakeResponse({
             "models": [
                 {"name": "llama3.2:3b", "size": 2000000000},
@@ -82,7 +82,7 @@ def test_list_models_returns_error_when_not_running(monkeypatch: pytest.MonkeyPa
 
 
 def test_preload_model_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_urlopen(req, _timeout):  # type: ignore[no-untyped-def]
+    def fake_urlopen(req, **kwargs):  # type: ignore[no-untyped-def]
         payload = json.loads(req.data.decode("utf-8"))
         assert payload["model"] == "llama3.2:3b"
         assert payload["prompt"] == "Hello"

@@ -19,7 +19,10 @@ classDiagram
         +datetime|None modified
         +float|None duration_seconds
         +str|None transcript
+        +str|None native_transcript
+        +str|None whisper_transcript
         +str|None revised_transcript
+        +str|None summary
         +str|None transcript_source
         +str|None custom_label
         +bool is_favorited

@@ -95,18 +95,21 @@ class TestGenerateNoteContent:
         assert "## Voice Memo" in result
         assert "![[Audio/test.m4a]]" in result
         assert "## Key Takeaways" in result
-        assert "### Revised Transcript" in result
+        # Three transcript sections
+        assert "### Cascade Transcript" in result
+        assert "### Whisper Transcript" in result
         assert "### Original Transcript" in result
         # Transcript sections are in code blocks
         assert "```markdown" in result
         # Default placeholders
-        assert "No LLM Transcript" in result
-        assert "No iOS Transcription Available" in result
+        assert "No cascade transcript available" in result
+        assert "No Whisper transcription available" in result
+        assert "No iOS transcription available" in result
 
-    def test_content_with_transcript(self) -> None:
+    def test_content_with_native_transcript(self) -> None:
         metadata = MemoMetadata(
             memo_id="test-123",
-            transcript="This is the original transcript.",
+            native_transcript="This is the original transcript.",
         )
 
         result = generate_note_content(
@@ -119,14 +122,16 @@ class TestGenerateNoteContent:
 
         assert "### Original Transcript" in result
         assert "This is the original transcript." in result
-        # No revised transcript provided
-        assert "No LLM Transcript" in result
+        # No cascade or whisper transcripts provided
+        assert "No cascade transcript available" in result
+        assert "No Whisper transcription available" in result
 
-    def test_content_with_revised_transcript(self) -> None:
+    def test_content_with_all_three_transcripts(self) -> None:
         metadata = MemoMetadata(
             memo_id="test-123",
-            transcript="Original text.",
-            revised_transcript="Cleaned up text.",
+            native_transcript="Original iOS text.",
+            whisper_transcript="Whisper transcribed text.",
+            revised_transcript="Cascade cleaned up text.",
         )
 
         result = generate_note_content(
@@ -137,10 +142,28 @@ class TestGenerateNoteContent:
             date_revised="2024-03-15",
         )
 
-        assert "### Revised Transcript" in result
-        assert "Cleaned up text." in result
+        assert "### Cascade Transcript" in result
+        assert "Cascade cleaned up text." in result
+        assert "### Whisper Transcript" in result
+        assert "Whisper transcribed text." in result
         assert "### Original Transcript" in result
-        assert "Original text." in result
+        assert "Original iOS text." in result
+
+    def test_content_with_summary(self) -> None:
+        metadata = MemoMetadata(
+            memo_id="test-123",
+            summary="This memo discusses project planning and deadlines.",
+        )
+
+        result = generate_note_content(
+            metadata,
+            "Audio/test.m4a",
+            note_title="2024-03-15-transcript",
+            date_created="2024-03-15",
+            date_revised="2024-03-15",
+        )
+
+        assert "> This memo discusses project planning and deadlines." in result
 
     def test_content_with_key_takeaways(self) -> None:
         metadata = MemoMetadata(memo_id="test-123")
@@ -198,6 +221,7 @@ class TestWriteNote:
             title="Test Recording",
             created=datetime(2024, 3, 15, 10, 30),
             transcript="Hello world",
+            native_transcript="Hello world",
             transcript_source="plist",
         )
         audio_source = temp_dir / "source.m4a"
@@ -224,8 +248,8 @@ class TestWriteNote:
         assert "date-created: 2024-03-15" in content
         assert "# 2024-03-15-00-test-recording" in content
         assert "## Voice Memo" in content
-        assert "Open in Voice Memos" in content  # App link text
-        assert "file://" in content  # File URL
+        assert "Play in Voice Memos" in content  # App link text
+        assert "shortcuts://" in content  # Shortcuts URL
         assert "### Original Transcript" in content
         assert "Hello world" in content
 

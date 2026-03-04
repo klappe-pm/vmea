@@ -134,16 +134,21 @@ def generate_note_content(
     # Title (filename without .md)
     parts.append(f"# {note_title}")
 
+    # Summary (placed directly under H1)
+    if metadata.summary:
+        parts.append(f"> {metadata.summary}")
+        parts.append("")
+
     # Voice Memo section with audio link
     parts.append("## Voice Memo")
     if audio_export_mode == "app-link" and audio_source_path:
         # Create links to open the recording
         memo_name = audio_source_path.stem  # e.g., "20261229 003252-9DE12FF8"
         file_path_encoded = quote(str(audio_source_path), safe='')
-        
+
         # Shortcuts URL to open file in Voice Memos (requires "VMEA Open" shortcut)
         shortcuts_url = f"shortcuts://run-shortcut?name=VMEA%20Open&input=text&text={file_path_encoded}"
-        
+
         parts.append(f"[🎙️ Play in Voice Memos]({shortcuts_url})")
         parts.append(f"")
         parts.append(f"**Recording:** `{memo_name}`")
@@ -160,23 +165,33 @@ def generate_note_content(
         parts.append("*No key takeaways available*")
     parts.append("")
 
-    # Revised Transcript section (in code block)
-    parts.append("### Revised Transcript")
+    # Cascade Transcript section (top code block)
+    parts.append("### Cascade Transcript")
     parts.append("```markdown")
     if metadata.revised_transcript:
         parts.append(metadata.revised_transcript)
     else:
-        parts.append("No LLM Transcript")
+        parts.append("No cascade transcript available")
     parts.append("```")
     parts.append("")
 
-    # Original Transcript section (in code block)
+    # Whisper Transcript section (middle code block)
+    parts.append("### Whisper Transcript")
+    parts.append("```markdown")
+    if metadata.whisper_transcript:
+        parts.append(metadata.whisper_transcript)
+    else:
+        parts.append("No Whisper transcription available")
+    parts.append("```")
+    parts.append("")
+
+    # Original Transcript section (bottom code block)
     parts.append("### Original Transcript")
     parts.append("```markdown")
-    if metadata.transcript:
-        parts.append(metadata.transcript)
+    if metadata.native_transcript:
+        parts.append(metadata.native_transcript)
     else:
-        parts.append("No iOS Transcription Available")
+        parts.append("No iOS transcription available")
     parts.append("```")
     parts.append("")
 

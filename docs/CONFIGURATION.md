@@ -37,6 +37,7 @@ ollama_startup_mode = "terminal_managed"         # "terminal_managed" or "backgr
 whisper_model = "base"                           # tiny, base, small, medium, large
 whisper_language = ""                            # ISO language code (empty = auto-detect)
 transcribe_missing = true                        # Transcribe memos that lack a native transcript
+force_transcribe_all = true                      # Always transcribe with Whisper (populates Whisper Transcript tier)
 
 # ─── Reconciliation & state ────────────────────────────────────
 conflict_resolution = "update"                   # "skip", "update", or "overwrite"
@@ -56,7 +57,7 @@ dry_run = false                                  # Preview mode (no files writte
 | `copy` | Copies the `.m4a` file into `output_folder/Audio/` |
 | `symlink` | Creates a symbolic link pointing to the original file |
 | `source-link` | Stores the original file path for reference |
-| `app-link` | Generates a clickable `file://` link that opens Voice Memos app (default, no file copy) |
+| `app-link` | Generates a clickable Shortcuts link to open in Voice Memos app (default, no file copy) |
 
 ## Cascade Mode
 

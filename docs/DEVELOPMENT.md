@@ -108,7 +108,7 @@ docs/
 The export pipeline flows left to right:
 
 ```
-Discovery -> State Check -> Parser -> [Whisper] -> [LLM Cleanup] -> Writer -> State Record
+Discovery -> State Check -> Parser -> [Whisper] -> [LLM Cleanup] -> [Summary] -> Writer -> State Record
 ```
 
 | Module | Responsibility |
@@ -117,7 +117,7 @@ Discovery -> State Check -> Parser -> [Whisper] -> [LLM Cleanup] -> Writer -> St
 | `state.py` | Checks if a memo needs exporting based on content hash and conflict policy |
 | `parser.py` | Extracts `MemoMetadata` (title, dates, duration, transcript) from files |
 | `transcribe.py` | Runs Whisper on memos without native transcripts |
-| `cleanup.py` | Sends transcripts to Ollama for cleanup, titles, takeaways, domains |
+| `cleanup.py` | Sends transcripts to Ollama for cleanup, titles, takeaways, domains, summaries |
 | `writer.py` | Assembles Markdown with YAML frontmatter and writes to disk |
 | `ollama.py` | Manages Ollama server lifecycle (start, check, preload) |
 | `cli.py` | Wires everything together as Typer commands |

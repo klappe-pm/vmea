@@ -209,6 +209,8 @@ tags:
 
 # 2024-03-15-00-project-kickoff-meeting
 
+> A concise LLM-generated summary of the voice memo content appears here.
+
 ## Voice Memo
 ![[Audio/2024-03-15-00-project-kickoff-meeting.m4a]]
 
@@ -217,12 +219,20 @@ tags:
 2. Second key point...
 ...
 
-### Revised Transcript
-Cleaned up transcript with proper formatting...
+### Cascade Transcript
+LLM-refined transcript with proper formatting, backlinks, and structure...
+
+### Whisper Transcript
+Whisper speech-to-text transcription of the audio...
 
 ### Original Transcript
-Raw transcript from iOS/Whisper...
+Native iOS transcript from plist/tsrp (if available)...
 ```
+
+**Three-Tier Transcripts:**
+- **Cascade Transcript** (top) – LLM cascade output with cleanup, formatting, and backlinks
+- **Whisper Transcript** (middle) – Raw Whisper speech-to-text transcription
+- **Original Transcript** (bottom) – Native iOS transcript extracted from the device
 
 ### Audio Files
 

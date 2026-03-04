@@ -30,23 +30,35 @@ If no native transcript is found and `transcribe_missing = true`, VMEA runs Whis
 
 **Whisper** -- When neither native source is available, VMEA uses OpenAI's Whisper speech-to-text model to transcribe the audio locally. Install with `pip install -e ".[transcribe]"`.
 
+### Three-Tier Transcript Preservation
+
+VMEA preserves all transcript sources separately in the exported note:
+
+| Tier | Section | Source | Description |
+|------|---------|--------|-------------|
+| Top | **Cascade Transcript** | LLM cascade output | Cleaned, formatted, with backlinks |
+| Middle | **Whisper Transcript** | Whisper STT | Raw Whisper transcription |
+| Bottom | **Original Transcript** | iOS native (tsrp/plist) | Original device transcript |
+
+Each tier is wrapped in a markdown code block. When `force_transcribe_all = true` (default), Whisper always runs regardless of native transcript availability, ensuring the middle tier is populated.
+
 ---
 
 ## LLM Processing Pipeline
 
-When `llm_cleanup_enabled = true` and a transcript is available, VMEA sends it through four LLM tasks via Ollama:
+When `llm_cleanup_enabled = true` and a transcript is available, VMEA sends it through five LLM tasks via Ollama:
 
 ### 1. Filename Title Generation
 
 Creates a short, filename-safe slug (2-5 words, lowercase, hyphenated).
 
-**Input:** Raw transcript  
-**Output:** e.g., `project-kickoff-meeting`  
+**Input:** Raw transcript
+**Output:** e.g., `project-kickoff-meeting`
 **Used in:** `YYYY-MM-DD-XX-<title>.md`
 
-### 2. Transcript Cleanup
+### 2. Transcript Cleanup (Cascade)
 
-Cleans up the raw transcript for readability. In single-model mode, one pass is made. In cascade mode, up to three models process the text sequentially.
+Cleans up the raw transcript for readability. In single-model mode, one pass is made. In cascade mode, up to three models process the text sequentially. The result is stored as the **Cascade Transcript**.
 
 **What cleanup does:**
 - Fix punctuation and capitalization
@@ -83,6 +95,13 @@ Classifies the memo into a domain and sub-domain for YAML frontmatter.
 domains: Technology
 sub-domains: Software Development
 ```
+
+### 5. Summary Generation
+
+Generates a concise 2-4 sentence summary of the memo content. The summary is placed directly under the note's H1 title as a blockquote.
+
+**Input:** Cascade transcript (preferred) or working transcript
+**Output:** Brief summary capturing main topic, key points, and any action items
 
 ---
 

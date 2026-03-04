@@ -19,6 +19,7 @@ from vmea.cleanup import (
     generate_domains,
     generate_filename_title,
     generate_key_takeaways,
+    generate_summary,
 )
 from vmea.config import VMEAConfig, get_config_path, load_config
 from vmea.discovery import diagnose_paths, discover_memos, find_source_path
@@ -621,7 +622,8 @@ def export_memo(
                     force_transcribe=config.force_transcribe_all,
                 )
                 if transcript_text:
-                    metadata.transcript = transcript_text
+                    metadata.whisper_transcript = transcript_text
+                    metadata.transcript = transcript_text  # Use whisper as working transcript for LLM
                     metadata.transcript_source = transcript_source
                     console.print(f"  [green]✓[/green] Transcribed with Whisper")
             except ImportError:
@@ -721,6 +723,18 @@ def export_memo(
                 domains = domain_result.domain
                 sub_domains = domain_result.sub_domain
                 console.print(f"  [green]✓[/green] Categorized: {domains} / {sub_domains}")
+
+                # Generate summary (using cascade transcript if available, else working transcript)
+                summary_input = metadata.revised_transcript or metadata.transcript
+                if summary_input:
+                    console.print(f"  [dim]summarizing[/dim] {memo_pair.memo_id[:12]}...")
+                    metadata.summary = generate_summary(
+                        transcript=summary_input,
+                        model=primary_model,
+                        host=config.ollama_host,
+                        timeout=config.ollama_timeout,
+                    )
+                    console.print(f"  [green]✓[/green] Summary generated")
             except Exception as exc:
                 console.print(
                     f"  [red]error[/red] {memo_pair.memo_id}: "

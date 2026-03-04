@@ -80,7 +80,7 @@ def test_cleanup_transcript_returns_cleanup_result(
 def test_cleanup_transcript_raises_on_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "vmea.cleanup.request.urlopen",
-        lambda _req, _timeout: FakeResponse({"response": "   "}),
+        lambda _req, **kwargs: FakeResponse({"response": "   "}),
     )
     monkeypatch.setattr("vmea.cleanup.is_ollama_running", lambda _h: True)
 

@@ -42,10 +42,12 @@ flowchart TB
         CLEANUP["cleanup_transcript() /<br/>cascade_cleanup_transcript()"]
         TAKEAWAY["generate_key_takeaways()"]
         DOMAIN["generate_domains()"]
+        SUMMARY["generate_summary()"]
         TRANS --> TITLE
         TRANS --> CLEANUP
         TRANS --> TAKEAWAY
         TRANS --> DOMAIN
+        CLEANUP --> SUMMARY
     end
 
     subgraph Output["📤 Output (writer.py + state.py)"]
@@ -57,6 +59,7 @@ flowchart TB
         CLEANUP --> WRITE
         TAKEAWAY --> WRITE
         DOMAIN --> WRITE
+        SUMMARY --> WRITE
         WRITE --> MD
         WRITE --> AUDIO
         MD --> STATE
@@ -72,5 +75,6 @@ flowchart TB
     style CLEANUP fill:#8b5cf6,color:#fff
     style TAKEAWAY fill:#8b5cf6,color:#fff
     style DOMAIN fill:#8b5cf6,color:#fff
+    style SUMMARY fill:#8b5cf6,color:#fff
     style STATE fill:#64748b,color:#fff
 ```
