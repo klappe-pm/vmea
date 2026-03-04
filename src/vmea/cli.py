@@ -390,6 +390,8 @@ def init() -> None:
     # LLM cleanup is now mandatory with cascade mode
     console.print("\n[bold]Cascade LLM Processing (Mandatory)[/bold]")
     console.print("All memos will be processed through: Whisper → 3 Ollama models")
+    console.print("\n[dim]The Ollama host is the server URL where Ollama runs (NOT a model name).[/dim]")
+    console.print("[dim]Press Enter to use the default. You'll select models in the next step.[/dim]")
     ollama_host = existing_config.ollama_host if existing_config else "http://localhost:11434"
     ollama_host = typer.prompt("Ollama host URL", default=ollama_host).strip()
 
