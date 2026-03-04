@@ -137,9 +137,9 @@ def generate_note_content(
     # Voice Memo section with audio link
     parts.append("## Voice Memo")
     if audio_export_mode == "app-link" and audio_source_path:
-        # Use voicememos:// URL scheme to open Voice Memos app
+        # Use file:// link to Voice Memos app (macOS)
         memo_name = audio_source_path.stem  # e.g., "20261229 003252-9DE12FF8"
-        parts.append(f"[🎙️ Open Voice Memos](voicememos://)")
+        parts.append(f"[🎙️ Open Voice Memos](file:///System/Applications/VoiceMemos.app)")
         parts.append(f"")
         parts.append(f"**Recording:** `{memo_name}`")
     else:
