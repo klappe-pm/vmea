@@ -352,10 +352,59 @@ def main(
     pass
 
 
+def check_ffmpeg() -> bool:
+    """Check if ffmpeg is installed and offer to install it."""
+    if shutil.which("ffmpeg") is not None:
+        return True
+    
+    console.print("[yellow]⚠[/yellow] ffmpeg is not installed.")
+    console.print("  Whisper requires ffmpeg to decode audio files.")
+    
+    # Check if Homebrew is available
+    if shutil.which("brew") is not None:
+        if typer.confirm("Install ffmpeg using Homebrew?", default=True):
+            console.print("[dim]Installing ffmpeg (this may take a minute)...[/dim]")
+            try:
+                result = subprocess.run(
+                    ["brew", "install", "ffmpeg"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                if result.returncode == 0:
+                    console.print("[green]✓[/green] ffmpeg installed successfully")
+                    return True
+                else:
+                    console.print(f"[red]✗[/red] Failed to install ffmpeg: {result.stderr}")
+                    return False
+            except subprocess.TimeoutExpired:
+                console.print("[red]✗[/red] ffmpeg installation timed out")
+                return False
+            except Exception as e:
+                console.print(f"[red]✗[/red] Error installing ffmpeg: {e}")
+                return False
+    else:
+        console.print("\n[bold]To install ffmpeg manually:[/bold]")
+        console.print("  macOS:  brew install ffmpeg")
+        console.print("  Ubuntu: sudo apt install ffmpeg")
+        console.print("  Windows: choco install ffmpeg")
+    
+    return False
+
+
 @app.command()
 def init() -> None:
     """First-run setup – select output folder and create config."""
     console.print("[bold blue]🎙️ VMEA Setup[/bold blue]\n")
+
+    # Check for ffmpeg first (required for Whisper)
+    console.print("[bold]Checking dependencies...[/bold]")
+    if shutil.which("ffmpeg"):
+        console.print("[green]✓[/green] ffmpeg is installed")
+    else:
+        if not check_ffmpeg():
+            console.print("[yellow]⚠[/yellow] Continuing without ffmpeg. Whisper transcription will fail.")
+            console.print("  Install ffmpeg later with: brew install ffmpeg\n")
 
     config_path = get_config_path()
     existing_config: VMEAConfig | None = None
