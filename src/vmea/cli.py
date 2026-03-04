@@ -352,6 +352,57 @@ def main(
     pass
 
 
+def setup_vmea_shortcut() -> bool:
+    """Check if VMEA Open shortcut exists and offer to create it.
+    
+    The shortcut opens audio files in Voice Memos app.
+    """
+    # Check if shortcut already exists
+    try:
+        result = subprocess.run(
+            ["shortcuts", "list"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if "VMEA Open" in result.stdout:
+            console.print("[green]\u2713[/green] VMEA Open shortcut is installed")
+            return True
+    except Exception:
+        pass
+    
+    console.print("[yellow]\u26a0[/yellow] VMEA Open shortcut not found.")
+    console.print("  This shortcut enables clicking links to open recordings in Voice Memos.")
+    
+    if typer.confirm("Create the VMEA Open shortcut now?", default=True):
+        # Create shortcut using shortcuts CLI
+        # The shortcut runs: open -a VoiceMemos "$input"
+        shortcut_file = Path("/tmp/vmea_open.shortcut")
+        
+        # We'll use AppleScript to create the shortcut since shortcuts CLI can't create from scratch
+        applescript = '''
+        tell application "Shortcuts Events"
+            make new shortcut with properties {name:"VMEA Open"}
+        end tell
+        '''
+        
+        # Actually, the easiest way is to guide the user to create it manually
+        console.print("\n[bold]To create the shortcut manually:[/bold]")
+        console.print("  1. Open the Shortcuts app")
+        console.print("  2. Click + to create a new shortcut")
+        console.print("  3. Name it: [cyan]VMEA Open[/cyan]")
+        console.print("  4. Add action: [cyan]Run Shell Script[/cyan]")
+        console.print("  5. Set shell to: [cyan]/bin/zsh[/cyan]")
+        console.print("  6. Set input to: [cyan]Shortcut Input[/cyan]")
+        console.print("  7. Enter script: [cyan]open -a VoiceMemos \"$1\"[/cyan]")
+        console.print("  8. Save the shortcut")
+        console.print("\n  Or run: [cyan]vmea shortcut-setup[/cyan] for a guided setup")
+        return False
+    
+    console.print("[dim]Skipping shortcut setup. Links will open Voice Memos app but not the specific recording.[/dim]")
+    return False
+
+
 def check_ffmpeg() -> bool:
     """Check if ffmpeg is installed and offer to install it."""
     if shutil.which("ffmpeg") is not None:
@@ -502,11 +553,16 @@ def init() -> None:
     console.print("[green]✓[/green] Audio: Links to Voice Memos app (no file copy)")
     if source_override:
         console.print(f"[green]✓[/green] Source folder: {source_override}")
-    console.print(f"[green]✓[/green] Pipeline: Whisper → {' → '.join(ollama_models)}")
+    console.print(f"[green]\u2713[/green] Pipeline: Whisper \u2192 {' \u2192 '.join(ollama_models)}")
+    
+    # Check/create VMEA Open shortcut for Voice Memos integration
+    console.print("\n[bold]Setting up Voice Memos integration...[/bold]")
+    setup_vmea_shortcut()
+    
     console.print("\n[bold]Next steps:[/bold]")
-    console.print("  vmea list     – List discovered voice memos")
-    console.print("  vmea export   – Export all memos")
-    console.print("  vmea doctor   – Check system health")
+    console.print("  vmea list     \u2013 List discovered voice memos")
+    console.print("  vmea export   \u2013 Export all memos")
+    console.print("  vmea doctor   \u2013 Check system health")
 
 
 def export_memo(

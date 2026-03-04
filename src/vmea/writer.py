@@ -137,9 +137,14 @@ def generate_note_content(
     # Voice Memo section with audio link
     parts.append("## Voice Memo")
     if audio_export_mode == "app-link" and audio_source_path:
-        # Use file:// link to Voice Memos app (macOS)
+        # Create links to open the recording
         memo_name = audio_source_path.stem  # e.g., "20261229 003252-9DE12FF8"
-        parts.append(f"[🎙️ Open Voice Memos](file:///System/Applications/VoiceMemos.app)")
+        file_path_encoded = quote(str(audio_source_path), safe='')
+        
+        # Shortcuts URL to open file in Voice Memos (requires "VMEA Open" shortcut)
+        shortcuts_url = f"shortcuts://run-shortcut?name=VMEA%20Open&input=text&text={file_path_encoded}"
+        
+        parts.append(f"[🎙️ Play in Voice Memos]({shortcuts_url})")
         parts.append(f"")
         parts.append(f"**Recording:** `{memo_name}`")
     else:
